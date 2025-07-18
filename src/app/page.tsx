@@ -1,103 +1,102 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect } from 'react'
+import { WhatsAppManagerClient } from '@/lib/whatsapp-manager'
+import { ThemeProvider } from '@/contexts/ThemeContext'
+import Sidebar from '@/components/Sidebar'
+import AdvancedDashboard from '@/components/AdvancedDashboard'
+import Inbox from '@/components/Inbox'
+import AIInbox from '@/components/AIInbox'
+import LiveInbox from '@/components/LiveInbox'
+import SessionManager from '@/components/SessionManager'
+import WhatsAppNumbers from '@/components/WhatsAppNumbers'
+import BulkMessaging from '@/components/BulkMessaging'
+import AdvancedCampaigns from '@/components/AdvancedCampaigns'
+import Analytics from '@/components/Analytics'
+import AdvancedAnalytics from '@/components/AdvancedAnalytics'
+import UserManagement from '@/components/UserManagement'
+import APIManagement from '@/components/APIManagement'
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [whatsappManager] = useState(() => new WhatsAppManagerClient())
+  const [isConnected, setIsConnected] = useState(false)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<any[]>([])
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    // Initialize socket connection
+    const socket = whatsappManager.initializeSocket()
+
+    if (socket) {
+      socket.on('connect', () => {
+        setIsConnected(true)
+        loadSessions()
+      })
+
+      socket.on('disconnect', () => {
+        setIsConnected(false)
+      })
+    }
+
+    // Load sessions on mount
+    loadSessions()
+
+    return () => {
+      whatsappManager.disconnect()
+    }
+  }, [whatsappManager])
+
+  const loadSessions = async () => {
+    try {
+      const sessionList = await whatsappManager.getSessions()
+      setSessions(sessionList)
+    } catch (error) {
+      console.error('Error loading sessions:', error)
+      setSessions([])
+    }
+  }
+
+  const renderActiveComponent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <AdvancedDashboard />
+      case 'sessions':
+        return <WhatsAppNumbers />
+      case 'inbox':
+        return <Inbox
+          whatsappManager={whatsappManager}
+          sessions={sessions}
+          selectedSession={selectedSession}
+          onSessionSelected={setSelectedSession}
+        />
+      case 'contacts':
+        return <div className="p-6"><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Contacts (Coming Soon)</h1></div>
+      case 'bulk':
+        return <AdvancedCampaigns whatsappManager={whatsappManager} selectedSession={selectedSession} />
+      case 'analytics':
+        return <AdvancedAnalytics />
+      case 'users':
+        return <UserManagement />
+      case 'api':
+        return <APIManagement />
+      case 'settings':
+        return <div className="p-6"><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings (Coming Soon)</h1></div>
+      case 'help':
+        return <div className="p-6"><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Help & Support (Coming Soon)</h1></div>
+      default:
+        return <AdvancedDashboard />
+    }
+  }
+
+  return (
+    <ThemeProvider>
+      <main className="flex h-screen bg-white">
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <div className="flex-1 overflow-auto bg-gray-50">
+          {renderActiveComponent()}
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+    </ThemeProvider>
+  )
 }

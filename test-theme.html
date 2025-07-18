@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theme Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+</head>
+<body class="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
+    <div class="container mx-auto p-8">
+        <h1 class="text-4xl font-bold mb-8">Theme Switching Test</h1>
+        
+        <div class="space-y-4 mb-8">
+            <button onclick="setTheme('light')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                Light Mode
+            </button>
+            <button onclick="setTheme('dark')" class="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700">
+                Dark Mode
+            </button>
+            <button onclick="setTheme('system')" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                System Mode
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-6 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-4">Card Example</h2>
+                <p class="text-gray-600 dark:text-gray-300">
+                    This is a sample card to test theme switching. 
+                    The background and text colors should change based on the selected theme.
+                </p>
+            </div>
+            
+            <div class="p-6 border border-gray-300 dark:border-gray-600 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-4">Border Example</h2>
+                <p class="text-gray-600 dark:text-gray-300">
+                    This card has borders that should also adapt to the theme.
+                </p>
+            </div>
+        </div>
+
+        <div class="mt-8 p-4 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+            <p class="text-yellow-800 dark:text-yellow-200">
+                Current theme: <span id="current-theme">light</span>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function setTheme(theme) {
+            const html = document.documentElement;
+            const currentThemeSpan = document.getElementById('current-theme');
+            
+            // Remove existing theme classes
+            html.classList.remove('light', 'dark');
+            
+            if (theme === 'system') {
+                const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                html.classList.add(systemTheme);
+                currentThemeSpan.textContent = `system (${systemTheme})`;
+            } else {
+                html.classList.add(theme);
+                currentThemeSpan.textContent = theme;
+            }
+            
+            // Save to localStorage
+            localStorage.setItem('theme', theme);
+            
+            console.log('Theme set to:', theme);
+            console.log('HTML classes:', html.className);
+        }
+
+        // Initialize theme on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTheme(savedTheme);
+        });
+    </script>
+</body>
+</html>
