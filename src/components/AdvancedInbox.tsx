@@ -2,13 +2,16 @@
 
 import React, { useState, useEffect } from 'react'
 import { WhatsAppManagerClient } from '@/lib/whatsapp-manager'
-import { 
-  MessageCircle, 
-  Send, 
+import {
+  MessageCircle,
+  Send,
   Search,
   Users,
   VolumeX,
-  Bell
+  Bell,
+  Bot,
+  Power,
+  Settings
 } from 'lucide-react'
 import Card, { CardContent, CardHeader } from './ui/Card'
 import Button from './ui/Button'
@@ -62,10 +65,16 @@ export default function AdvancedInbox({
   const [loading, setLoading] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
 
+  // AI Agent states
+  const [chatAgentSettings, setChatAgentSettings] = useState<{ [chatId: string]: any }>({})
+  const [availableAgents, setAvailableAgents] = useState<any[]>([])
+  const [showAgentSettings, setShowAgentSettings] = useState(false)
+
   // Load real chats from WhatsApp API and setup real-time listeners
   useEffect(() => {
     if (selectedSession && whatsappManager) {
       loadChats()
+      loadAvailableAgents()
       setupRealTimeListeners()
       setIsConnected(true)
     }
@@ -165,10 +174,96 @@ export default function AdvancedInbox({
     }
   }
 
+  // Load available AI agents
+  const loadAvailableAgents = async () => {
+    try {
+      const response = await fetch('/api/ai-agents')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableAgents(data.agents || [])
+      }
+    } catch (error) {
+      console.error('Error loading AI agents:', error)
+    }
+  }
+
+  // Load chat-specific AI agent settings
+  const loadChatAgentSettings = async () => {
+    if (!selectedChat || !selectedSession) return
+
+    try {
+      const response = await fetch(`/api/ai-agents/chat-settings?session_id=${selectedSession}&contact_number=${selectedChat}`)
+      if (response.ok) {
+        const data = await response.json()
+        setChatAgentSettings(prev => ({
+          ...prev,
+          [selectedChat]: data.settings
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading chat agent settings:', error)
+    }
+  }
+
+  // Toggle AI agent for current chat
+  const handleToggleChatAgent = async (isEnabled: boolean, agentId?: string) => {
+    if (!selectedChat || !selectedSession) return
+
+    try {
+      const response = await fetch('/api/ai-agents/chat-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: selectedSession,
+          contactNumber: selectedChat,
+          isEnabled,
+          agentId
+        })
+      })
+
+      if (response.ok) {
+        await loadChatAgentSettings()
+      }
+    } catch (error) {
+      console.error('Error toggling chat agent:', error)
+    }
+  }
+
+  // Assign specific agent to chat
+  const handleAssignAgentToChat = async (agentId: string) => {
+    if (!selectedChat || !selectedSession) return
+
+    try {
+      const response = await fetch('/api/ai-agents/chat-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: selectedSession,
+          contactNumber: selectedChat,
+          agentId,
+          isEnabled: true,
+          autoReplyEnabled: true
+        })
+      })
+
+      if (response.ok) {
+        await loadChatAgentSettings()
+        setShowAgentSettings(false)
+      }
+    } catch (error) {
+      console.error('Error assigning agent to chat:', error)
+    }
+  }
+
   // Load real messages when chat is selected
   const handleChatSelect = async (contact: string) => {
     setSelectedChat(contact)
     setLoading(true)
+
+    // Load chat agent settings when chat is selected
+    setTimeout(() => {
+      loadChatAgentSettings()
+    }, 100)
 
     try {
       console.log('🔄 Loading messages for chat:', contact)
@@ -412,22 +507,65 @@ export default function AdvancedInbox({
               <>
                 {/* Chat Header */}
                 <div className="p-4 border-b border-gray-200">
-                  <div className="flex items-center space-x-3">
-                    <div className="relative">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
-                        {selectedChatData.name.charAt(0).toUpperCase()}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="relative">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                          {selectedChatData.name.charAt(0).toUpperCase()}
+                        </div>
+                        {selectedChatData.isOnline && (
+                          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                        )}
                       </div>
-                      {selectedChatData.isOnline && (
-                        <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                      )}
+                      <div>
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          {selectedChatData.name}
+                        </h2>
+                        <p className="text-sm text-gray-500">
+                          {selectedChatData.isOnline ? 'Online' : 'Offline'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">
-                        {selectedChatData.name}
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        {selectedChatData.isOnline ? 'Online' : 'Offline'}
-                      </p>
+
+                    {/* AI Agent Controls */}
+                    <div className="flex items-center space-x-2">
+                      {chatAgentSettings[selectedChat] ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-1 px-2 py-1 bg-blue-50 rounded-lg">
+                            <Bot size={14} className="text-blue-600" />
+                            <span className="text-xs font-medium text-blue-700">
+                              {chatAgentSettings[selectedChat].agent_name || 'AI Agent'}
+                            </span>
+                            <div className={`w-2 h-2 rounded-full ${chatAgentSettings[selectedChat].isEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleToggleChatAgent(!chatAgentSettings[selectedChat].isEnabled)}
+                            className={`p-1 ${chatAgentSettings[selectedChat].isEnabled ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}`}
+                          >
+                            <Power size={14} />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setShowAgentSettings(true)}
+                            className="p-1"
+                          >
+                            <Settings size={14} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowAgentSettings(true)}
+                          className="flex items-center space-x-1"
+                        >
+                          <Bot size={14} />
+                          <span>Add AI Agent</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -498,6 +636,105 @@ export default function AdvancedInbox({
           </Card>
         </div>
       </div>
+
+      {/* AI Agent Settings Modal */}
+      {showAgentSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Bot className="h-5 w-5 text-blue-600" />
+                AI Agent Settings
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAgentSettings(false)}
+                className="p-1"
+              >
+                ×
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-gray-600 dark:text-gray-400 text-sm">
+                Assign an AI agent to this chat for automated responses:
+              </p>
+
+              {/* Current Agent Status */}
+              {chatAgentSettings[selectedChat || ''] && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-blue-900 dark:text-blue-100">
+                        Current Agent: {chatAgentSettings[selectedChat || ''].agent_name || 'Unknown'}
+                      </p>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        Status: {chatAgentSettings[selectedChat || ''].isEnabled ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleToggleChatAgent(false)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Available Agents */}
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Available Agents:</p>
+                {availableAgents.filter(agent => agent.isActive).map((agent) => (
+                  <div key={agent.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                        <Bot size={16} />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{agent.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{agent.description}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                            {agent.personality}
+                          </span>
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                            {agent.language}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => handleAssignAgentToChat(agent.id)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                ))}
+
+                {availableAgents.filter(agent => agent.isActive).length === 0 && (
+                  <p className="text-center text-gray-500 py-8">No active AI agents available</p>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAgentSettings(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

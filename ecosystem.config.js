@@ -11,7 +11,8 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3001
+        PORT: 3005,
+        HOST: '0.0.0.0'
       },
       error_file: './logs/nextjs-error.log',
       out_file: './logs/nextjs-out.log',
@@ -28,7 +29,8 @@ module.exports = {
       max_memory_restart: '2G',
       env: {
         NODE_ENV: 'production',
-        WHATSAPP_SERVER_PORT: 3002
+        WHATSAPP_SERVER_PORT: 3001,
+        HOST: '0.0.0.0'
       },
       error_file: './logs/whatsapp-error.log',
       out_file: './logs/whatsapp-out.log',

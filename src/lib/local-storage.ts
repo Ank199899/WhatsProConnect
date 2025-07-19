@@ -84,14 +84,25 @@ class LocalStorageService {
     return this.getData<LocalSession>('sessions')
   }
 
-  createSession(session: Omit<LocalSession, 'id' | 'created_at'>): LocalSession {
+  createSession(session: Omit<LocalSession, 'id' | 'created_at'> & { id?: string }): LocalSession {
     const sessions = this.getSessions()
+
+    // Check for existing session with same name or id
+    const existingSession = sessions.find(s =>
+      s.name === session.name || (session.id && s.id === session.id)
+    )
+
+    if (existingSession) {
+      console.log(`⚠️ Local session "${session.name}" already exists, updating instead of creating`)
+      return this.updateSession(existingSession.id, session) || existingSession
+    }
+
     const newSession: LocalSession = {
       ...session,
-      id: Date.now().toString(),
+      id: session.id || Date.now().toString(),
       created_at: new Date().toISOString()
     }
-    
+
     sessions.push(newSession)
     this.setData('sessions', sessions)
     return newSession
@@ -275,11 +286,134 @@ class LocalStorageService {
     return true
   }
 
+  // Campaigns
+  getCampaigns(): any[] {
+    return this.getData<any>('campaigns')
+  }
+
+  saveCampaigns(campaigns: any[]): void {
+    this.setData('campaigns', campaigns)
+  }
+
+  createCampaign(campaign: any): any {
+    const campaigns = this.getCampaigns()
+    const newCampaign = {
+      ...campaign,
+      id: campaign.id || `campaign_${Date.now()}`,
+      createdAt: campaign.createdAt || new Date().toISOString().split('T')[0]
+    }
+
+    campaigns.unshift(newCampaign)
+    this.setData('campaigns', campaigns)
+    return newCampaign
+  }
+
+  updateCampaign(campaignId: string, updates: any): boolean {
+    const campaigns = this.getCampaigns()
+    const index = campaigns.findIndex(c => c.id === campaignId)
+
+    if (index === -1) return false
+
+    campaigns[index] = { ...campaigns[index], ...updates }
+    this.setData('campaigns', campaigns)
+    return true
+  }
+
+  deleteCampaign(campaignId: string): boolean {
+    const campaigns = this.getCampaigns()
+    const filteredCampaigns = campaigns.filter(c => c.id !== campaignId)
+
+    if (filteredCampaigns.length === campaigns.length) return false
+
+    this.setData('campaigns', filteredCampaigns)
+    return true
+  }
+
+  // Templates
+  getTemplates(): any[] {
+    return this.getData<any>('templates')
+  }
+
+  saveTemplates(templates: any[]): void {
+    this.setData('templates', templates)
+
+    // Dispatch custom event for real-time sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('templatesUpdated', {
+        detail: { action: 'save', templates }
+      }))
+    }
+  }
+
+  createTemplate(template: any): any {
+    const templates = this.getTemplates()
+    const newTemplate = {
+      ...template,
+      id: template.id || `template_${Date.now()}`,
+      createdAt: template.createdAt || new Date().toISOString()
+    }
+
+    templates.unshift(newTemplate)
+    this.setData('templates', templates)
+
+    // Dispatch custom event for real-time sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('templatesUpdated', {
+        detail: { action: 'create', template: newTemplate, templates }
+      }))
+    }
+
+    return newTemplate
+  }
+
+  updateTemplate(templateId: string, updates: any): any {
+    const templates = this.getTemplates()
+    const templateIndex = templates.findIndex(t => t.id === templateId)
+
+    if (templateIndex === -1) return null
+
+    const updatedTemplate = {
+      ...templates[templateIndex],
+      ...updates,
+      updatedAt: new Date().toISOString()
+    }
+
+    templates[templateIndex] = updatedTemplate
+    this.setData('templates', templates)
+
+    // Dispatch custom event for real-time sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('templatesUpdated', {
+        detail: { action: 'update', template: updatedTemplate, templates }
+      }))
+    }
+
+    return updatedTemplate
+  }
+
+  deleteTemplate(templateId: string): boolean {
+    const templates = this.getTemplates()
+    const filteredTemplates = templates.filter(t => t.id !== templateId)
+
+    if (filteredTemplates.length === templates.length) return false
+
+    this.setData('templates', filteredTemplates)
+
+    // Dispatch custom event for real-time sync
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('templatesUpdated', {
+        detail: { action: 'delete', templateId, templates: filteredTemplates }
+      }))
+    }
+
+    return true
+  }
+
   // Utility methods
   clearAllData(): void {
     if (typeof window === 'undefined') return
-    
-    const keys = ['sessions', 'contacts', 'messages', 'users', 'api_keys']
+
+    const keys = ['sessions', 'contacts', 'messages', 'users', 'api_keys', 'campaigns', 'templates']
     keys.forEach(key => {
       localStorage.removeItem(this.getStorageKey(key))
     })
@@ -313,6 +447,32 @@ class LocalStorageService {
       console.error('Error importing data:', error)
       return false
     }
+  }
+
+  // Cleanup duplicate sessions
+  cleanupDuplicateSessions(): number {
+    const sessions = this.getSessions()
+    const uniqueSessions: LocalSession[] = []
+    const seenNames = new Set<string>()
+    let duplicatesRemoved = 0
+
+    // Keep only unique session names (first occurrence)
+    sessions.forEach(session => {
+      if (!seenNames.has(session.name)) {
+        seenNames.add(session.name)
+        uniqueSessions.push(session)
+      } else {
+        duplicatesRemoved++
+        console.log(`🧹 Removing duplicate local session: ${session.name}`)
+      }
+    })
+
+    if (duplicatesRemoved > 0) {
+      this.setData('sessions', uniqueSessions)
+      console.log(`✅ Cleaned up ${duplicatesRemoved} duplicate sessions from local storage`)
+    }
+
+    return duplicatesRemoved
   }
 }
 

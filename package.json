@@ -3,14 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack -H 0.0.0.0 -p 3005",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3005",
     "lint": "next lint",
+    "type-check": "tsc --noEmit",
     "whatsapp-server": "node server/whatsapp-server.js",
     "dev:full": "concurrently \"npm run dev\" \"npm run whatsapp-server\"",
     "prod": "concurrently \"npm run start\" \"npm run whatsapp-server\"",
-    "build:prod": "npm run build && npm run prod"
+    "build:prod": "npm run build && npm run prod",
+    "auto-start": "chmod +x scripts/auto-start.sh && ./scripts/auto-start.sh",
+    "build-start": "chmod +x scripts/build-and-start.sh && ./scripts/build-and-start.sh",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:delete": "pm2 delete all",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 list",
+    "pm2:save": "pm2 save",
+    "production": "npm run build && npm run pm2:start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.52.0",
@@ -34,11 +45,12 @@
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.3.1",
     "uuid": "^11.1.0",
-    "whatsapp-web.js": "^1.31.0"
+    "whatsapp-web.js": "^1.31.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

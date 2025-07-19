@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { RealTimeProvider } from "@/contexts/RealTimeContext";
 import { ToastContainer } from "@/components/Toast";
 
 const geistSans = Geist({
@@ -52,8 +53,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
-          {children}
-          <ToastContainer />
+          <RealTimeProvider>
+            {children}
+            <ToastContainer />
+          </RealTimeProvider>
         </ThemeProvider>
       </body>
     </html>

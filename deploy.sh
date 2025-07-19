@@ -55,10 +55,15 @@ npm install
 print_status "Building the application..."
 npm run build
 
+# Initialize AI Agent database
+print_status "Initializing AI Agent database..."
+node scripts/init-ai-agents.js
+
 # Create necessary directories
 print_status "Creating necessary directories..."
 mkdir -p sessions
 mkdir -p logs
+mkdir -p data
 
 # Set up environment variables
 if [ ! -f .env.local ]; then
@@ -225,9 +230,11 @@ echo "   • View logs: pm2 logs"
 echo "   • Reload Nginx: sudo systemctl reload nginx"
 echo ""
 echo "⚠️  Important Notes:"
-echo "   • Configure your .env.local file with proper Supabase credentials"
-echo "   • Run your database schema in Supabase SQL Editor"
+echo "   • AI Agent Management system is now active with sample agents"
+echo "   • Local SQLite database is initialized with AI agent schema"
+echo "   • Configure your .env.local file if needed"
 echo "   • Make sure your firewall allows HTTP/HTTPS traffic"
 echo "   • For HTTPS, configure SSL certificates in Nginx"
+echo "   • AI Agents can be managed from the sidebar menu"
 echo ""
 print_status "Access your application at: http://192.168.1.230"

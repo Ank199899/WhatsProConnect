@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Smartphone, 
-  Plus, 
-  Trash2, 
-  RefreshCw, 
-  Wifi, 
-  WifiOff, 
+import {
+  Smartphone,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
   QrCode,
   CheckCircle,
   AlertTriangle,
@@ -20,7 +20,9 @@ import {
   Copy,
   Download,
   Activity,
-  Signal
+  Signal,
+  Bot,
+  Power
 } from 'lucide-react'
 import { WhatsAppManagerClient, SessionStatus } from '@/lib/whatsapp-manager'
 import { LocalStorage } from '@/lib/local-storage'
@@ -72,8 +74,15 @@ export default function AdvancedSessionManager({ whatsappManager }: AdvancedSess
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // AI Agent states
+  const [agents, setAgents] = useState<any[]>([])
+  const [sessionAgents, setSessionAgents] = useState<{ [sessionId: string]: any[] }>({})
+  const [showAgentModal, setShowAgentModal] = useState(false)
+  const [selectedSessionForAgent, setSelectedSessionForAgent] = useState<string | null>(null)
+
   useEffect(() => {
     loadSessions()
+    loadAIAgents()
     setupEventListeners()
 
     // Add some sample data if no sessions exist
@@ -107,11 +116,92 @@ export default function AdvancedSessionManager({ whatsappManager }: AdvancedSess
       if (!loading) setRefreshing(true)
       const sessionList = await whatsappManager.getSessions()
       setSessions(sessionList)
+
+      // Load agents for each session
+      for (const session of sessionList) {
+        await loadSessionAgents(session.id)
+      }
     } catch (error) {
       console.error('Error loading sessions:', error)
     } finally {
       setLoading(false)
       setRefreshing(false)
+    }
+  }
+
+  const loadAIAgents = async () => {
+    try {
+      const response = await fetch('/api/ai-agents')
+      if (response.ok) {
+        const data = await response.json()
+        setAgents(data.agents || [])
+      }
+    } catch (error) {
+      console.error('Error loading AI agents:', error)
+    }
+  }
+
+  const loadSessionAgents = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/ai-agents/assignments?session_id=${sessionId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSessionAgents(prev => ({
+          ...prev,
+          [sessionId]: data.assignments || []
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading session agents:', error)
+    }
+  }
+
+  const handleToggleSessionAgent = async (sessionId: string, agentId: string, isEnabled: boolean) => {
+    try {
+      const response = await fetch('/api/ai-agents/assignments/toggle', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, sessionId, isEnabled })
+      })
+
+      if (response.ok) {
+        await loadSessionAgents(sessionId)
+      }
+    } catch (error) {
+      console.error('Error toggling session agent:', error)
+    }
+  }
+
+  const handleAssignAgentToSession = async (sessionId: string, agentId: string) => {
+    try {
+      const response = await fetch('/api/ai-agents/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, sessionId })
+      })
+
+      if (response.ok) {
+        await loadSessionAgents(sessionId)
+        setShowAgentModal(false)
+      }
+    } catch (error) {
+      console.error('Error assigning agent to session:', error)
+    }
+  }
+
+  const handleUnassignAgentFromSession = async (sessionId: string, agentId: string) => {
+    try {
+      const response = await fetch('/api/ai-agents/assignments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, sessionId })
+      })
+
+      if (response.ok) {
+        await loadSessionAgents(sessionId)
+      }
+    } catch (error) {
+      console.error('Error unassigning agent from session:', error)
     }
   }
 
@@ -437,7 +527,89 @@ export default function AdvancedSessionManager({ whatsappManager }: AdvancedSess
                             </div>
                           </>
                         )}
-                        
+
+                        {/* AI Agent Section */}
+                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                              <Bot size={14} />
+                              AI Agents
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedSessionForAgent(session.id)
+                                setShowAgentModal(true)
+                              }}
+                              className="p-1"
+                            >
+                              <Plus size={12} />
+                            </Button>
+                          </div>
+
+                          <div className="space-y-1 mb-3">
+                            {sessionAgents[session.id]?.filter(agent => agent.isEnabled).map((agent) => (
+                              <div key={agent.id} className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                  <span className="font-medium">{agent.agentName}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleToggleSessionAgent(session.id, agent.agentId, false)}
+                                    className="p-1 text-orange-600 hover:text-orange-700"
+                                  >
+                                    <Power size={10} />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleUnassignAgentFromSession(session.id, agent.agentId)}
+                                    className="p-1 text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 size={10} />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+
+                            {sessionAgents[session.id]?.filter(agent => !agent.isEnabled).map((agent) => (
+                              <div key={agent.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs opacity-60">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                                  <span className="font-medium">{agent.agentName}</span>
+                                  <span className="text-gray-500">(Disabled)</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleToggleSessionAgent(session.id, agent.agentId, true)}
+                                    className="p-1 text-green-600 hover:text-green-700"
+                                  >
+                                    <Power size={10} />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleUnassignAgentFromSession(session.id, agent.agentId)}
+                                    className="p-1 text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 size={10} />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+
+                            {(!sessionAgents[session.id] || sessionAgents[session.id].length === 0) && (
+                              <p className="text-xs text-gray-500 italic">No agents assigned</p>
+                            )}
+                          </div>
+                        </div>
+
                         <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
                           <div className="flex items-center space-x-2">
                             {session.status === 'ready' && (
@@ -537,6 +709,86 @@ export default function AdvancedSessionManager({ whatsappManager }: AdvancedSess
             className="bg-green-600 hover:bg-green-700"
           >
             {isCreating ? 'Creating...' : 'Create Session'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Agent Assignment Modal */}
+      <Modal
+        isOpen={showAgentModal}
+        onClose={() => {
+          setShowAgentModal(false)
+          setSelectedSessionForAgent(null)
+        }}
+      >
+        <ModalHeader>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Assign AI Agent to Session
+          </h3>
+        </ModalHeader>
+        <ModalBody>
+          <div className="space-y-4">
+            <p className="text-gray-600 dark:text-gray-400">
+              Select an AI agent to assign to this session:
+            </p>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {agents.filter(agent => agent.isActive).map((agent) => {
+                const isAssigned = sessionAgents[selectedSessionForAgent || '']?.some(sa => sa.agentId === agent.id)
+
+                return (
+                  <div key={agent.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-600 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                        <Bot size={16} />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{agent.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{agent.description}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                            {agent.personality}
+                          </span>
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                            {agent.language}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant={isAssigned ? "outline" : "default"}
+                      onClick={() => {
+                        if (isAssigned) {
+                          handleUnassignAgentFromSession(selectedSessionForAgent || '', agent.id)
+                        } else {
+                          handleAssignAgentToSession(selectedSessionForAgent || '', agent.id)
+                        }
+                      }}
+                      className={isAssigned ? 'text-red-600 hover:text-red-700' : 'bg-blue-600 hover:bg-blue-700 text-white'}
+                    >
+                      {isAssigned ? 'Unassign' : 'Assign'}
+                    </Button>
+                  </div>
+                )
+              })}
+
+              {agents.filter(agent => agent.isActive).length === 0 && (
+                <p className="text-center text-gray-500 py-8">No active AI agents available</p>
+              )}
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowAgentModal(false)
+              setSelectedSessionForAgent(null)
+            }}
+          >
+            Close
           </Button>
         </ModalFooter>
       </Modal>

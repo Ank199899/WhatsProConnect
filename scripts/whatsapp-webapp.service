@@ -1,0 +1,46 @@
+[Unit]
+Description=WhatsApp Advanced WebApp
+Documentation=https://github.com/username/whatsapp-advanced-webapp
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=admin1
+Group=admin1
+WorkingDirectory=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp
+Environment=NODE_ENV=production
+Environment=PATH=/usr/bin:/usr/local/bin:/home/admin1/.nvm/versions/node/v20.18.1/bin
+Environment=PM2_HOME=/home/admin1/.pm2
+
+# Start command
+ExecStart=/home/admin1/.nvm/versions/node/v20.18.1/bin/pm2 start ecosystem.config.js --env production
+ExecReload=/home/admin1/.nvm/versions/node/v20.18.1/bin/pm2 restart all
+ExecStop=/home/admin1/.nvm/versions/node/v20.18.1/bin/pm2 stop all
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/admin1/WhatsappAdvWebapp
+ReadWritePaths=/home/admin1/.pm2
+ReadWritePaths=/tmp
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whatsapp-webapp
+
+[Install]
+WantedBy=multi-user.target

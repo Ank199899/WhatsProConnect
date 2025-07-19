@@ -11,11 +11,19 @@ import LiveInbox from '@/components/LiveInbox'
 import SessionManager from '@/components/SessionManager'
 import WhatsAppNumbers from '@/components/WhatsAppNumbers'
 import BulkMessaging from '@/components/BulkMessaging'
-import AdvancedCampaigns from '@/components/AdvancedCampaigns'
+import AdvancedBulkMessaging from '@/components/AdvancedBulkMessaging'
 import Analytics from '@/components/Analytics'
 import AdvancedAnalytics from '@/components/AdvancedAnalytics'
 import UserManagement from '@/components/UserManagement'
 import APIManagement from '@/components/APIManagement'
+import TemplateManagement from '@/components/TemplateManagement'
+import RoleManagement from '@/components/RoleManagement'
+import ContactsManagement from '@/components/ContactsManagement'
+import AIAgentManagement from '@/components/AIAgentManagement'
+import AdvancedAIAgentManagement from '@/components/AdvancedAIAgentManagement'
+import AIProviderSettings from '@/components/AIProviderSettings'
+import UltimateAIManagement from '@/components/UltimateAIManagement'
+import { RealTimeProvider } from '@/contexts/RealTimeContext'
 
 export default function Home() {
   const [whatsappManager] = useState(() => new WhatsAppManagerClient())
@@ -51,6 +59,20 @@ export default function Home() {
     try {
       const sessionList = await whatsappManager.getSessions()
       setSessions(sessionList)
+      console.log('📱 Main App - Sessions loaded:', sessionList.length, sessionList)
+
+      // Auto-select first available session if none selected
+      if (!selectedSession && sessionList.length > 0) {
+        const readySession = sessionList.find((s: any) => s.status === 'ready')
+        if (readySession) {
+          setSelectedSession(readySession.id)
+          console.log('🎯 Auto-selected session:', readySession.id)
+        } else if (sessionList.length > 0) {
+          // If no ready session, select first available
+          setSelectedSession(sessionList[0].id)
+          console.log('🎯 Auto-selected first session:', sessionList[0].id)
+        }
+      }
     } catch (error) {
       console.error('Error loading sessions:', error)
       setSessions([])
@@ -71,13 +93,38 @@ export default function Home() {
           onSessionSelected={setSelectedSession}
         />
       case 'contacts':
-        return <div className="p-6"><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Contacts (Coming Soon)</h1></div>
+        return <ContactsManagement />
+      case 'ultimate-ai':
+        return <UltimateAIManagement />
       case 'bulk':
-        return <AdvancedCampaigns whatsappManager={whatsappManager} selectedSession={selectedSession} />
+        return <AdvancedBulkMessaging
+          sessions={sessions.map(session => {
+            const isActive = session.status === 'ready' || session.isActive
+            const isBlocked = session.status === 'auth_failure' || session.status === 'disconnected'
+
+            return {
+              id: session.id,
+              name: session.name,
+              phone: session.phoneNumber || session.phone_number || 'Not Connected',
+              status: isActive ? 'active' : 'inactive',
+              lastUsed: session.createdAt || new Date().toISOString().split('T')[0],
+              messagesSent: session.stats?.totalMessages || 0,
+              isBlocked: isBlocked
+            }
+          })}
+          selectedSession={selectedSession}
+          onSessionSelected={setSelectedSession}
+        />
+      case 'templates':
+        return <TemplateManagement />
       case 'analytics':
         return <AdvancedAnalytics />
+      case 'ai-providers':
+        return <AIProviderSettings />
       case 'users':
         return <UserManagement />
+      case 'roles':
+        return <RoleManagement />
       case 'api':
         return <APIManagement />
       case 'settings':
@@ -91,12 +138,14 @@ export default function Home() {
 
   return (
     <ThemeProvider>
-      <main className="flex h-screen bg-white">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-        <div className="flex-1 overflow-auto bg-gray-50">
-          {renderActiveComponent()}
-        </div>
-      </main>
+      <RealTimeProvider>
+        <main className="flex h-screen bg-white">
+          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          <div className="flex-1 overflow-auto bg-gray-50">
+            {renderActiveComponent()}
+          </div>
+        </main>
+      </RealTimeProvider>
     </ThemeProvider>
   )
 }

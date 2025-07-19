@@ -34,22 +34,74 @@ export default function WhatsAppNumbers() {
   const [selectedQR, setSelectedQR] = useState<WhatsAppSession | null>(null)
   const [qrImage, setQrImage] = useState('')
 
-  // Load sessions from database
+  // Load real WhatsApp sessions
   const loadSessions = async () => {
     try {
-      console.log('📋 Loading sessions...')
-      const response = await fetch('/api/database/sessions')
-      const result = await response.json()
-      
-      if (result.success) {
-        setSessions(result.sessions || [])
-        console.log('✅ Loaded:', result.sessions?.length || 0, 'sessions')
+      console.log('📋 Loading real WhatsApp sessions...')
+
+      // First try to get real sessions from WhatsApp API
+      const whatsappResponse = await fetch('/api/whatsapp/sessions')
+
+      if (whatsappResponse.ok) {
+        const whatsappData = await whatsappResponse.json()
+        console.log('📱 WhatsApp API response:', whatsappData)
+
+        if (whatsappData.success && whatsappData.sessions && whatsappData.sessions.length > 0) {
+          // Map WhatsApp sessions to our format
+          const mappedSessions = whatsappData.sessions.map((session: any) => ({
+            id: session.id || session.sessionId,
+            name: session.name,
+            status: session.status === 'connected' ? 'ready' :
+                   session.status === 'scanning' ? 'qr_code' : 'disconnected',
+            phone_number: session.phoneNumber,
+            qr_code: session.qrCode,
+            is_active: session.status === 'connected',
+            created_at: session.lastActivity || new Date().toISOString(),
+            message_count: session.messageCount || 0
+          }))
+
+          setSessions(mappedSessions)
+          console.log('✅ Loaded real WhatsApp sessions:', mappedSessions.length)
+          return
+        }
       }
+
+      // Fallback to database sessions if WhatsApp API fails
+      const dbResponse = await fetch('/api/database/sessions')
+      if (dbResponse.ok) {
+        const dbResult = await dbResponse.json()
+        if (dbResult.success && dbResult.sessions) {
+          setSessions(dbResult.sessions)
+          console.log('✅ Loaded database sessions:', dbResult.sessions.length)
+          return
+        }
+      }
+
+      // If no sessions found, show empty state
+      setSessions([])
+      console.log('📱 No active sessions found - showing empty state')
+
     } catch (error) {
       console.error('❌ Load failed:', error)
+      setSessions([])
     } finally {
       setLoading(false)
     }
+  }
+
+  // Auto-detect server URL
+  const getServerUrl = () => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const protocol = window.location.protocol
+
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://192.168.1.230:3001'
+      } else {
+        return `${protocol}//${hostname}:3001`
+      }
+    }
+    return 'http://192.168.1.230:3001'
   }
 
   // Test connectivity
@@ -57,8 +109,11 @@ export default function WhatsAppNumbers() {
     try {
       console.log('🧪 Testing connectivity...')
 
+      const serverUrl = getServerUrl()
+      console.log('🔧 Using server URL:', serverUrl)
+
       // Test backend
-      const backendResponse = await fetch('http://192.168.1.230:3001/api/sessions')
+      const backendResponse = await fetch(`/api/backend/sessions`)
       console.log('📡 Backend status:', backendResponse.status)
 
       // Test frontend API
@@ -68,7 +123,7 @@ export default function WhatsAppNumbers() {
       alert('✅ Connectivity test passed! Backend: ' + backendResponse.status + ', Frontend: ' + frontendResponse.status)
     } catch (error) {
       console.error('❌ Connectivity test failed:', error)
-      alert('❌ Connectivity test failed: ' + error.message)
+      alert('❌ Connectivity test failed: ' + (error as Error).message)
     }
   }
 
@@ -76,8 +131,8 @@ export default function WhatsAppNumbers() {
   const syncWithBackend = async () => {
     try {
       console.log('🔄 Syncing...')
-      
-      const response = await fetch('http://192.168.1.230:3001/api/sessions')
+
+      const response = await fetch(`/api/backend/sessions`)
       const data = await response.json()
       
       // Backend returns array directly, not wrapped in success object
@@ -123,7 +178,7 @@ export default function WhatsAppNumbers() {
       // Create session in backend
       console.log('📡 Calling backend API...')
 
-      const response = await fetch('http://192.168.1.230:3001/api/sessions/create', {
+      const response = await fetch(`/api/backend/sessions/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: sessionName })
@@ -141,40 +196,18 @@ export default function WhatsAppNumbers() {
       if (result.success && result.sessionId) {
         console.log('✅ Backend session created:', result.sessionId)
 
-        // Save to database
-        console.log('💾 Saving to database...')
-        const dbResponse = await fetch('/api/database/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: result.sessionId,
-            name: sessionName,
-            status: 'initializing',
-            phone_number: null,
-            qr_code: null,
-            is_active: true
-          })
-        })
+        // Backend already saves to database, just reload sessions
+        console.log('🔄 Reloading sessions...')
 
-        const dbResult = await dbResponse.json()
-        console.log('💾 Database result:', dbResult)
+        setSessionName('')
+        setShowCreateModal(false)
+        await loadSessions()
 
-        if (dbResult.success) {
-          console.log('✅ Session saved to database')
+        // Start syncing for new session
+        setTimeout(syncWithBackend, 2000)
+        setTimeout(syncWithBackend, 5000)
 
-          setSessionName('')
-          setShowCreateModal(false)
-          await loadSessions()
-
-          // Start syncing for new session
-          setTimeout(syncWithBackend, 2000)
-          setTimeout(syncWithBackend, 5000)
-
-          alert('Session created successfully! QR code will appear soon.')
-        } else {
-          console.error('❌ Database save failed:', dbResult.error)
-          alert('Session created in backend but failed to save to database: ' + (dbResult.error || 'Unknown error'))
-        }
+        alert('Session created successfully! QR code will appear soon.')
       } else {
         console.error('❌ Backend creation failed:', result)
         alert('Failed to create session: ' + (result.message || result.error || 'Unknown error'))
@@ -195,28 +228,65 @@ export default function WhatsAppNumbers() {
 
   // Delete session
   const deleteSession = async (sessionId: string) => {
-    if (!confirm('Delete session?')) return
+    if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) return
 
     try {
       console.log('🗑️ Deleting session:', sessionId)
+      setLoading(true)
 
-      // Delete from backend
-      const backendResponse = await fetch(`http://192.168.1.230:3001/api/sessions/${sessionId}`, {
-        method: 'DELETE'
+      const serverUrl = getServerUrl()
+      console.log('🔧 Using server URL:', serverUrl)
+
+      // Delete from backend first
+      console.log('📡 Calling backend delete API...')
+      const backendResponse = await fetch(`/api/backend/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       })
-      console.log('📡 Backend delete response:', backendResponse.status)
+
+      console.log('📡 Backend delete response status:', backendResponse.status)
+
+      if (!backendResponse.ok) {
+        const errorText = await backendResponse.text()
+        console.error('❌ Backend delete failed:', errorText)
+        throw new Error(`Backend delete failed: ${backendResponse.status} - ${errorText}`)
+      }
+
+      const backendResult = await backendResponse.json()
+      console.log('📡 Backend delete result:', backendResult)
 
       // Delete from database
+      console.log('💾 Calling database delete API...')
       const dbResponse = await fetch(`/api/database/sessions/${sessionId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       })
-      console.log('💾 Database delete response:', dbResponse.status)
 
+      console.log('💾 Database delete response status:', dbResponse.status)
+
+      if (!dbResponse.ok) {
+        const dbErrorText = await dbResponse.text()
+        console.warn('⚠️ Database delete failed:', dbErrorText)
+      } else {
+        const dbResult = await dbResponse.json()
+        console.log('💾 Database delete result:', dbResult)
+      }
+
+      // Reload sessions
+      console.log('🔄 Reloading sessions...')
       await loadSessions()
       console.log('✅ Session deleted successfully')
+      alert('Session deleted successfully!')
+
     } catch (error) {
       console.error('❌ Delete failed:', error)
-      alert('Failed to delete session: ' + error.message)
+      alert('Failed to delete session: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      setLoading(false)
     }
   }
 

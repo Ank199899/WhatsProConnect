@@ -64,8 +64,22 @@ export class WhatsAppManagerClient {
   private authFailureListeners: Array<(data: any) => void> = []
   private connectionStatusListeners: Array<(isConnected: boolean) => void> = []
 
-  constructor(baseUrl = 'http://192.168.1.230:3001') {
-    this.baseUrl = baseUrl
+  constructor(baseUrl?: string) {
+    // Auto-detect environment and set appropriate URL
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const protocol = window.location.protocol
+
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        this.baseUrl = baseUrl || 'http://localhost:3001'
+      } else {
+        this.baseUrl = baseUrl || `${protocol}//${hostname}:3001`
+      }
+    } else {
+      this.baseUrl = baseUrl || 'http://localhost:3001'
+    }
+
+    console.log('🔧 WhatsApp Manager initialized with URL:', this.baseUrl)
   }
 
   // Initialize socket connection
@@ -166,8 +180,13 @@ export class WhatsAppManagerClient {
 
       return data
     } catch (error) {
-      console.error('Error creating session:', error)
-      return { success: false, sessionId: '', sessionName: '' }
+      console.error('❌ Error creating session:', error)
+      return {
+        success: false,
+        sessionId: '',
+        sessionName: '',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
     }
   }
 
@@ -249,6 +268,9 @@ export class WhatsAppManagerClient {
       // Get local sessions for persistence
       const localSessions = LocalStorage.getSessions()
 
+      // Cleanup duplicate sessions in local storage
+      LocalStorage.cleanupDuplicateSessions()
+
       // Merge server and local data
       const sessions: SessionStatus[] = serverSessions.map((session: any) => {
         const localSession = localSessions.find(ls => ls.id === session.id)
@@ -262,6 +284,7 @@ export class WhatsAppManagerClient {
           })
         } else {
           LocalStorage.createSession({
+            id: session.id,
             name: session.name,
             status: session.status,
             phone_number: session.phoneNumber,
@@ -300,27 +323,47 @@ export class WhatsAppManagerClient {
 
   async deleteSession(sessionId: string): Promise<{ success: boolean; message: string }> {
     try {
-      // Delete from backend server
-      const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}`, {
-        method: 'DELETE',
-      })
+      console.log(`🗑️ Deleting session: ${sessionId}`);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      // Delete from WhatsApp server
+      const serverResponse = await fetch(`${this.baseUrl}/api/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!serverResponse.ok) {
+        const errorText = await serverResponse.text();
+        throw new Error(`Server delete failed: ${serverResponse.status} - ${errorText}`);
       }
 
-      const data = await response.json()
-      console.log('Session deleted:', data)
+      const serverData = await serverResponse.json();
+      console.log('✅ Session deleted from server:', serverData);
+
+      // Delete from database
+      const dbResponse = await fetch(`/api/database/sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+
+      if (!dbResponse.ok) {
+        console.warn('⚠️ Database delete failed, but continuing...');
+      } else {
+        const dbData = await dbResponse.json();
+        console.log('✅ Session deleted from database:', dbData);
+      }
 
       // Delete from local storage
-      if (data.success) {
-        LocalStorage.deleteSession(sessionId)
-      }
+      LocalStorage.deleteSession(sessionId);
+      console.log('✅ Session deleted from local storage');
 
-      return data
+      return {
+        success: true,
+        message: 'Session deleted successfully'
+      };
     } catch (error) {
-      console.error('Error deleting session:', error)
-      return { success: false, message: 'Failed to delete session' }
+      console.error('❌ Error deleting session:', error);
+      return { success: false, message: 'Failed to delete session' };
     }
   }
 

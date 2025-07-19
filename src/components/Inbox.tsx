@@ -80,14 +80,27 @@ export default function Inbox({
 
   // Load all chats from all connected sessions
   useEffect(() => {
-    loadAllChats()
+    console.log('🔄 Sessions changed, reloading chats...', sessions.length, 'sessions')
+    console.log('📊 Sessions status:', sessions.map(s => `${s.name}: ${s.status}`))
 
-    // Auto-refresh disabled by default - only manual refresh
-    // const interval = autoRefresh ? setInterval(loadAllChats, 5000) : null
+    if (sessions.length > 0) {
+      loadAllChats()
+    } else {
+      console.log('⚠️ No sessions available')
+      setAllChats([])
+    }
 
-    // return () => {
-    //   if (interval) clearInterval(interval)
-    // }
+    // Auto-refresh for real-time updates
+    const interval = setInterval(() => {
+      if (sessions.length > 0 && readySessions.length > 0) {
+        console.log('🔄 Auto-refreshing chats...')
+        loadAllChats()
+      }
+    }, 30000) // Refresh every 30 seconds
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
   }, [sessions])
 
   // Filter chats based on search, session, and active tab
@@ -170,7 +183,19 @@ export default function Inbox({
     // Listen for session status changes
     whatsappManager.onClientReady((data) => {
       console.log('🎉 Session ready:', data.sessionId)
-      setTimeout(loadAllChats, 2000) // Reload chats when session becomes ready
+      setTimeout(() => {
+        console.log('🔄 Reloading chats after session ready...')
+        loadAllChats()
+      }, 2000) // Reload chats when session becomes ready
+    })
+
+    // Listen for session disconnections
+    whatsappManager.onClientDisconnected?.((data) => {
+      console.log('❌ Session disconnected:', data.sessionId)
+      setTimeout(() => {
+        console.log('🔄 Reloading chats after session disconnect...')
+        loadAllChats()
+      }, 1000)
     })
 
     // Listen for chat updates (new contacts, updated last messages)
@@ -409,11 +434,73 @@ export default function Inbox({
   const unreadChats = allChats.filter(c => c.unreadCount > 0 && !archivedChats.includes(c.id)).length
   const archivedCount = archivedChats.length
 
+  // Enhanced session status check
+  const readySessions = sessions.filter(s => s.status === 'ready')
+  const connectingSessions = sessions.filter(s => s.status === 'connecting' || s.status === 'qr')
+
   if (sessions.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="text-gray-500 text-lg">
           No active sessions available. Please create and connect a session first.
+        </div>
+        <div className="mt-4">
+          <button
+            onClick={() => window.location.href = '/whatsapp-numbers'}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Go to WhatsApp Numbers
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (readySessions.length === 0 && connectingSessions.length > 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-yellow-600 text-lg">
+          Sessions are connecting... Please wait.
+        </div>
+        <div className="text-gray-500 mt-2">
+          {connectingSessions.length} session(s) connecting
+        </div>
+        <div className="mt-4">
+          <button
+            onClick={loadAllChats}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Checking...' : 'Check Again'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (readySessions.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 text-lg">
+          No connected sessions found.
+        </div>
+        <div className="text-gray-500 mt-2">
+          Please check your WhatsApp sessions and ensure they are connected.
+        </div>
+        <div className="mt-4 space-x-2">
+          <button
+            onClick={loadAllChats}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            onClick={() => window.location.href = '/whatsapp-numbers'}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+          >
+            Manage Sessions
+          </button>
         </div>
       </div>
     )

@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Smartphone, 
-  MessageCircle, 
-  Users, 
+import { useRealTimeSessions, useRealTimeContacts, useRealTimeMessages, useRealTimeAnalytics } from '@/hooks/useRealTimeSync'
+import {
+  Smartphone,
+  MessageCircle,
+  Users,
   TrendingUp,
   Activity,
   Clock,
@@ -108,6 +109,12 @@ const performanceCards = [
 ]
 
 export default function AdvancedDashboard() {
+  // Real-time data hooks
+  const { data: sessions, loading: sessionsLoading, refresh: refreshSessions } = useRealTimeSessions()
+  const { data: contacts, loading: contactsLoading } = useRealTimeContacts()
+  const { data: messages, loading: messagesLoading } = useRealTimeMessages()
+  const { data: analytics, loading: analyticsLoading } = useRealTimeAnalytics()
+
   const [stats, setStats] = useState<DashboardStats>({
     totalSessions: 0,
     activeSessions: 0,
@@ -121,90 +128,77 @@ export default function AdvancedDashboard() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([])
   const [loading, setLoading] = useState(true)
 
-  const loadDashboardData = async () => {
-    try {
-      // Mock data for now (replace with API calls)
-      const mockSessions = Array.from({ length: 5 }, (_, i) => ({
-        id: `session-${i}`,
-        status: Math.random() > 0.3 ? 'connected' : 'disconnected'
-      }))
-
-      const mockMessages = Array.from({ length: 1250 }, (_, i) => ({
-        id: `msg-${i}`,
-        timestamp: (Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toString()
-      }))
-
-      const mockContacts = Array.from({ length: 350 }, (_, i) => ({
-        id: `contact-${i}`,
-        name: `Contact ${i}`
-      }))
-
-      // Calculate 24h messages
-      const last24h = Date.now() - (24 * 60 * 60 * 1000)
-      const messagesLast24h = mockMessages.filter(m => parseInt(m.timestamp) > last24h).length
-
-      // Mock performance data
-      const avgResponseTime = Math.floor(Math.random() * 500) + 200
-      const successRate = Math.floor(Math.random() * 10) + 90
-      const uptime = Math.floor(Math.random() * 5) + 95
-
-      setStats({
-        totalSessions: mockSessions.length,
-        activeSessions: mockSessions.filter(s => s.status === 'connected').length,
-        totalMessages: mockMessages.length,
-        totalContacts: mockContacts.length,
-        messagesLast24h,
-        avgResponseTime,
-        successRate,
-        uptime
-      })
-      
-      // Mock recent activity
-      setRecentActivity([
-        {
-          id: '1',
-          type: 'session_connected',
-          description: 'New WhatsApp session connected',
-          timestamp: Date.now() - 300000,
-          status: 'success'
-        },
-        {
-          id: '2', 
-          type: 'message_sent',
-          description: 'Bulk message sent to 150 contacts',
-          timestamp: Date.now() - 600000,
-          status: 'success'
-        },
-        {
-          id: '3',
-          type: 'contact_added',
-          description: '25 new contacts imported',
-          timestamp: Date.now() - 900000,
-          status: 'success'
-        },
-        {
-          id: '4',
-          type: 'bulk_campaign',
-          description: 'Marketing campaign completed',
-          timestamp: Date.now() - 1200000,
-          status: 'success'
-        }
-      ])
-      
-    } catch (error) {
-      console.error('Error loading dashboard data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // Calculate stats from real-time data
   useEffect(() => {
-    loadDashboardData()
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(loadDashboardData, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    if (sessionsLoading || contactsLoading || messagesLoading) {
+      setLoading(true)
+      return
+    }
+
+    console.log('📊 Calculating stats from real-time data...')
+    console.log('Sessions:', sessions)
+    console.log('Contacts:', contacts)
+    console.log('Messages:', messages)
+
+    // Calculate 24h messages from real data
+    const last24h = Date.now() - (24 * 60 * 60 * 1000)
+    const messagesLast24h = messages.filter((m: any) => {
+      const msgTime = new Date(m.created_at || m.timestamp).getTime()
+      return msgTime > last24h
+    }).length
+
+    // Calculate real performance data
+    const avgResponseTime = messages.length > 0 ?
+      messages.reduce((sum: number, m: any) => sum + (m.response_time || 300), 0) / messages.length : 300
+    const successRate = messages.length > 0 ?
+      ((messages.filter((m: any) => m.status === 'delivered').length / messages.length) * 100) : 95
+    const uptime = sessions.length > 0 ?
+      ((sessions.filter((s: any) => s.status === 'ready').length / sessions.length) * 100) : 100
+
+    setStats({
+      totalSessions: sessions.length,
+      activeSessions: sessions.filter((s: any) => s.status === 'ready').length,
+      totalMessages: messages.length,
+      totalContacts: contacts.length,
+      messagesLast24h,
+      avgResponseTime: Math.round(avgResponseTime),
+      successRate: Math.round(successRate),
+      uptime: Math.round(uptime)
+    })
+
+    setLoading(false)
+  }, [sessions, contacts, messages, sessionsLoading, contactsLoading, messagesLoading])
+
+  // Generate recent activity from real data
+  useEffect(() => {
+    if (loading) return
+
+    const recentActivityData = [
+      {
+        id: '1',
+        type: 'session_connected',
+        description: `${sessions.filter((s: any) => s.status === 'ready').length} WhatsApp sessions active`,
+        timestamp: Date.now() - 300000,
+        status: 'success'
+      },
+      {
+        id: '2',
+        type: 'message_sent',
+        description: `${stats.messagesLast24h} messages sent in last 24h`,
+        timestamp: Date.now() - 600000,
+        status: 'success'
+      },
+      {
+        id: '3',
+        type: 'contact_added',
+        description: `${contacts.length} total contacts in database`,
+        timestamp: Date.now() - 900000,
+        status: 'success'
+      }
+    ]
+
+    setRecentActivity(recentActivityData)
+  }, [sessions, contacts, stats, loading])
 
   if (loading) {
     return (

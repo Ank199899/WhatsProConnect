@@ -79,6 +79,7 @@ class LocalDatabase {
     this.dbPath = path.join(dbDir, 'whatsapp.db')
     this.db = new Database(this.dbPath)
     this.initializeDatabase()
+    this.initializeDefaultProviders()
   }
 
   private initializeDatabase() {
@@ -173,6 +174,119 @@ class LocalDatabase {
       )
     `)
 
+    // Templates Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        type TEXT DEFAULT 'text' CHECK (type IN ('text', 'image', 'video', 'document', 'interactive')),
+        content TEXT NOT NULL,
+        variables TEXT,
+        language TEXT DEFAULT 'en',
+        status TEXT DEFAULT 'draft' CHECK (status IN ('active', 'pending', 'rejected', 'draft')),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        created_by TEXT,
+        usage_count INTEGER DEFAULT 0,
+        rating REAL DEFAULT 0,
+        tags TEXT
+      )
+    `)
+
+    // Roles Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        permissions TEXT,
+        user_count INTEGER DEFAULT 0,
+        is_system BOOLEAN DEFAULT 0,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        created_by TEXT,
+        color TEXT DEFAULT '#3B82F6',
+        priority INTEGER DEFAULT 999
+      )
+    `)
+
+    // Enhanced Contacts Table (update existing)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS enhanced_contacts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        phone_number TEXT NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT,
+        address TEXT,
+        tags TEXT,
+        notes TEXT,
+        profile_picture TEXT,
+        last_message_at TEXT,
+        message_count INTEGER DEFAULT 0,
+        is_blocked BOOLEAN DEFAULT 0,
+        is_favorite BOOLEAN DEFAULT 0,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'blocked')),
+        custom_fields TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id) ON DELETE CASCADE
+      )
+    `)
+
+    // AI Providers Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        description TEXT,
+        api_endpoint TEXT,
+        supported_models TEXT,
+        default_model TEXT,
+        requires_api_key BOOLEAN DEFAULT 1,
+        is_active BOOLEAN DEFAULT 1,
+        configuration TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+
+    // AI Provider API Keys Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_provider_keys (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        user_id TEXT DEFAULT 'default',
+        api_key_encrypted TEXT NOT NULL,
+        api_key_hash TEXT NOT NULL,
+        additional_config TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
+      )
+    `)
+
+    // AI Agent Providers Table (for agent-provider assignments)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_agent_providers (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        model_name TEXT,
+        priority INTEGER DEFAULT 1,
+        is_active BOOLEAN DEFAULT 1,
+        configuration TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
+        UNIQUE(agent_id, provider_id)
+      )
+    `)
+
     // Create indexes
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_whatsapp_sessions_status ON whatsapp_sessions(status);
@@ -185,6 +299,16 @@ class LocalDatabase {
       CREATE INDEX IF NOT EXISTS idx_bulk_queue_session_id ON bulk_message_queue(session_id);
       CREATE INDEX IF NOT EXISTS idx_bulk_queue_status ON bulk_message_queue(status);
       CREATE INDEX IF NOT EXISTS idx_bulk_logs_queue_id ON bulk_message_logs(bulk_queue_id);
+      CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
+      CREATE INDEX IF NOT EXISTS idx_templates_status ON templates(status);
+      CREATE INDEX IF NOT EXISTS idx_roles_active ON roles(is_active);
+      CREATE INDEX IF NOT EXISTS idx_enhanced_contacts_phone ON enhanced_contacts(phone_number);
+      CREATE INDEX IF NOT EXISTS idx_enhanced_contacts_status ON enhanced_contacts(status);
+      CREATE INDEX IF NOT EXISTS idx_ai_providers_active ON ai_providers(is_active);
+      CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_provider ON ai_provider_keys(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_user ON ai_provider_keys(user_id);
+      CREATE INDEX IF NOT EXISTS idx_ai_agent_providers_agent ON ai_agent_providers(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_ai_agent_providers_provider ON ai_agent_providers(provider_id);
     `)
   }
 
@@ -197,8 +321,18 @@ class LocalDatabase {
     const id = (sessionData as any).id || this.generateId() // Use provided ID or generate new one
     const now = new Date().toISOString()
 
+    // Check if session with same name already exists
+    const existingSession = this.db.prepare(`
+      SELECT id FROM whatsapp_sessions WHERE name = ? AND is_active = 1
+    `).get(sessionData.name)
+
+    if (existingSession) {
+      console.log(`⚠️ Session with name "${sessionData.name}" already exists, returning existing session`)
+      return this.getSession(existingSession.id)!
+    }
+
     const stmt = this.db.prepare(`
-      INSERT INTO whatsapp_sessions (id, name, phone_number, status, qr_code, is_active, created_at, updated_at)
+      INSERT OR IGNORE INTO whatsapp_sessions (id, name, phone_number, status, qr_code, is_active, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
@@ -320,6 +454,20 @@ class LocalDatabase {
     return stmt.all(sessionId, limit) as Message[]
   }
 
+  getAllMessages(): Message[] {
+    const stmt = this.db.prepare('SELECT * FROM messages ORDER BY timestamp DESC')
+    return stmt.all() as Message[]
+  }
+
+  getMessagesInDateRange(startDate: Date, endDate: Date): Message[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM messages
+      WHERE timestamp BETWEEN ? AND ?
+      ORDER BY timestamp DESC
+    `)
+    return stmt.all(startDate.toISOString(), endDate.toISOString()) as Message[]
+  }
+
   getChatMessages(sessionId: string, contactNumber: string, limit = 50): Message[] {
     console.log(`🔍 Database: Getting messages for session ${sessionId}, contact ${contactNumber}`)
     const stmt = this.db.prepare(`
@@ -430,6 +578,805 @@ class LocalDatabase {
     this.db.prepare(`DELETE FROM bulk_message_queue WHERE status IN ('completed', 'failed') AND created_at < ?`).run(cutoffISO)
     
     return result.changes
+  }
+
+  // Template Management
+  createTemplate(templateData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO templates (id, name, category, type, content, variables, language, status, created_by, tags)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const result = stmt.run(
+      templateData.id,
+      templateData.name,
+      templateData.category,
+      templateData.type,
+      templateData.content,
+      JSON.stringify(templateData.variables || []),
+      templateData.language,
+      templateData.status,
+      templateData.createdBy,
+      JSON.stringify(templateData.tags || [])
+    )
+
+    return this.getTemplate(templateData.id)
+  }
+
+  getTemplate(templateId: string) {
+    const stmt = this.db.prepare('SELECT * FROM templates WHERE id = ?')
+    const template = stmt.get(templateId) as any
+
+    if (template) {
+      template.variables = JSON.parse(template.variables || '[]')
+      template.tags = JSON.parse(template.tags || '[]')
+    }
+
+    return template
+  }
+
+  getAllTemplates() {
+    const stmt = this.db.prepare('SELECT * FROM templates ORDER BY created_at DESC')
+    const templates = stmt.all() as any[]
+
+    return templates.map(template => ({
+      ...template,
+      variables: JSON.parse(template.variables || '[]'),
+      tags: JSON.parse(template.tags || '[]')
+    }))
+  }
+
+  updateTemplate(templateId: string, updates: any) {
+    const fields = Object.keys(updates).filter(key => key !== 'id')
+    const setClause = fields.map(field => `${field} = ?`).join(', ')
+    const values = fields.map(field => {
+      if (field === 'variables' || field === 'tags') {
+        return JSON.stringify(updates[field])
+      }
+      return updates[field]
+    })
+
+    const stmt = this.db.prepare(`
+      UPDATE templates
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+
+    const result = stmt.run(...values, templateId)
+    return result.changes > 0 ? this.getTemplate(templateId) : null
+  }
+
+  deleteTemplate(templateId: string) {
+    const stmt = this.db.prepare('DELETE FROM templates WHERE id = ?')
+    const result = stmt.run(templateId)
+    return result.changes > 0
+  }
+
+  // Role Management
+  createRole(roleData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO roles (id, name, description, permissions, is_system, is_active, created_by, color, priority)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const result = stmt.run(
+      roleData.id,
+      roleData.name,
+      roleData.description,
+      JSON.stringify(roleData.permissions || []),
+      roleData.isSystem ? 1 : 0,
+      roleData.isActive ? 1 : 0,
+      roleData.createdBy,
+      roleData.color,
+      roleData.priority
+    )
+
+    return this.getRole(roleData.id)
+  }
+
+  getRole(roleId: string) {
+    const stmt = this.db.prepare('SELECT * FROM roles WHERE id = ?')
+    const role = stmt.get(roleId) as any
+
+    if (role) {
+      role.permissions = JSON.parse(role.permissions || '[]')
+      role.isSystem = Boolean(role.is_system)
+      role.isActive = Boolean(role.is_active)
+    }
+
+    return role
+  }
+
+  getAllRoles() {
+    const stmt = this.db.prepare('SELECT * FROM roles ORDER BY priority ASC, created_at DESC')
+    const roles = stmt.all() as any[]
+
+    return roles.map(role => ({
+      ...role,
+      permissions: JSON.parse(role.permissions || '[]'),
+      isSystem: Boolean(role.is_system),
+      isActive: Boolean(role.is_active)
+    }))
+  }
+
+  updateRole(roleId: string, updates: any) {
+    const fields = Object.keys(updates).filter(key => key !== 'id')
+    const setClause = fields.map(field => `${field} = ?`).join(', ')
+    const values = fields.map(field => {
+      if (field === 'permissions') {
+        return JSON.stringify(updates[field])
+      }
+      if (field === 'isSystem') {
+        return updates[field] ? 1 : 0
+      }
+      if (field === 'isActive') {
+        return updates[field] ? 1 : 0
+      }
+      return updates[field]
+    })
+
+    const stmt = this.db.prepare(`
+      UPDATE roles
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+
+    const result = stmt.run(...values, roleId)
+    return result.changes > 0 ? this.getRole(roleId) : null
+  }
+
+  deleteRole(roleId: string) {
+    const stmt = this.db.prepare('DELETE FROM roles WHERE id = ? AND is_system = 0')
+    const result = stmt.run(roleId)
+    return result.changes > 0
+  }
+
+  // Enhanced Contact Management
+  createContact(contactData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO enhanced_contacts (id, session_id, phone_number, name, email, address, tags, notes, status, custom_fields)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const result = stmt.run(
+      contactData.id,
+      contactData.sessionId,
+      contactData.phone,
+      contactData.name,
+      contactData.email,
+      contactData.address,
+      JSON.stringify(contactData.tags || []),
+      contactData.notes,
+      contactData.status,
+      JSON.stringify(contactData.customFields || {})
+    )
+
+    return this.getContact(contactData.id)
+  }
+
+  getContact(contactId: string) {
+    const stmt = this.db.prepare('SELECT * FROM enhanced_contacts WHERE id = ?')
+    const contact = stmt.get(contactId) as any
+
+    if (contact) {
+      contact.tags = JSON.parse(contact.tags || '[]')
+      contact.customFields = JSON.parse(contact.custom_fields || '{}')
+      contact.isBlocked = Boolean(contact.is_blocked)
+      contact.isFavorite = Boolean(contact.is_favorite)
+    }
+
+    return contact
+  }
+
+  getAllContacts() {
+    const stmt = this.db.prepare('SELECT * FROM enhanced_contacts ORDER BY created_at DESC')
+    const contacts = stmt.all() as any[]
+
+    return contacts.map(contact => ({
+      ...contact,
+      tags: JSON.parse(contact.tags || '[]'),
+      customFields: JSON.parse(contact.custom_fields || '{}'),
+      isBlocked: Boolean(contact.is_blocked),
+      isFavorite: Boolean(contact.is_favorite)
+    }))
+  }
+
+  updateContact(contactId: string, updates: any) {
+    const fields = Object.keys(updates).filter(key => key !== 'id')
+    const setClause = fields.map(field => `${field} = ?`).join(', ')
+    const values = fields.map(field => {
+      if (field === 'tags') {
+        return JSON.stringify(updates[field])
+      }
+      if (field === 'customFields') {
+        return JSON.stringify(updates[field])
+      }
+      if (field === 'isBlocked') {
+        return updates[field] ? 1 : 0
+      }
+      if (field === 'isFavorite') {
+        return updates[field] ? 1 : 0
+      }
+      return updates[field]
+    })
+
+    const stmt = this.db.prepare(`
+      UPDATE enhanced_contacts
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+
+    const result = stmt.run(...values, contactId)
+    return result.changes > 0 ? this.getContact(contactId) : null
+  }
+
+  deleteContact(contactId: string) {
+    const stmt = this.db.prepare('DELETE FROM enhanced_contacts WHERE id = ?')
+    const result = stmt.run(contactId)
+    return result.changes > 0
+  }
+
+  // AI Agent Management
+  createAIAgent(agentData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO ai_agents (id, name, description, personality, language, response_style,
+                           auto_reply_enabled, response_delay_min, response_delay_max,
+                           max_response_length, keywords, system_prompt, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const result = stmt.run(
+      agentData.id,
+      agentData.name,
+      agentData.description,
+      agentData.personality || 'helpful',
+      agentData.language || 'en',
+      agentData.responseStyle || 'professional',
+      agentData.autoReplyEnabled ? 1 : 0,
+      agentData.responseDelayMin || 1,
+      agentData.responseDelayMax || 5,
+      agentData.maxResponseLength || 500,
+      JSON.stringify(agentData.keywords || []),
+      agentData.systemPrompt,
+      agentData.isActive ? 1 : 0
+    )
+
+    return this.getAIAgent(agentData.id)
+  }
+
+  getAIAgent(agentId: string) {
+    const stmt = this.db.prepare('SELECT * FROM ai_agents WHERE id = ?')
+    const agent = stmt.get(agentId) as any
+
+    if (agent) {
+      agent.keywords = JSON.parse(agent.keywords || '[]')
+      agent.autoReplyEnabled = Boolean(agent.auto_reply_enabled)
+      agent.isActive = Boolean(agent.is_active)
+    }
+
+    return agent
+  }
+
+  getAllAIAgents() {
+    const stmt = this.db.prepare('SELECT * FROM ai_agents ORDER BY created_at DESC')
+    const agents = stmt.all() as any[]
+
+    return agents.map(agent => ({
+      ...agent,
+      keywords: JSON.parse(agent.keywords || '[]'),
+      autoReplyEnabled: Boolean(agent.auto_reply_enabled),
+      isActive: Boolean(agent.is_active)
+    }))
+  }
+
+  updateAIAgent(agentId: string, updates: any) {
+    const fields = Object.keys(updates).filter(key => updates[key] !== undefined)
+    if (fields.length === 0) return this.getAIAgent(agentId)
+
+    const setClause = fields.map(field => {
+      if (field === 'autoReplyEnabled') return 'auto_reply_enabled = ?'
+      if (field === 'responseDelayMin') return 'response_delay_min = ?'
+      if (field === 'responseDelayMax') return 'response_delay_max = ?'
+      if (field === 'maxResponseLength') return 'max_response_length = ?'
+      if (field === 'responseStyle') return 'response_style = ?'
+      if (field === 'systemPrompt') return 'system_prompt = ?'
+      if (field === 'isActive') return 'is_active = ?'
+      return `${field} = ?`
+    }).join(', ')
+
+    const values = fields.map(field => {
+      if (field === 'keywords') return JSON.stringify(updates[field])
+      if (field === 'autoReplyEnabled' || field === 'isActive') return updates[field] ? 1 : 0
+      return updates[field]
+    })
+
+    const stmt = this.db.prepare(`
+      UPDATE ai_agents
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+
+    stmt.run(...values, agentId)
+    return this.getAIAgent(agentId)
+  }
+
+  deleteAIAgent(agentId: string) {
+    const stmt = this.db.prepare('DELETE FROM ai_agents WHERE id = ?')
+    const result = stmt.run(agentId)
+    return result.changes > 0
+  }
+
+  // AI Agent Session Assignments
+  assignAgentToSession(agentId: string, sessionId: string, priority: number = 1) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ai_agent_sessions (id, agent_id, session_id, is_enabled, priority)
+      VALUES (?, ?, ?, 1, ?)
+    `)
+
+    const id = this.generateId()
+    stmt.run(id, agentId, sessionId, priority)
+
+    return this.getAgentSessionAssignment(agentId, sessionId)
+  }
+
+  unassignAgentFromSession(agentId: string, sessionId: string) {
+    const stmt = this.db.prepare('DELETE FROM ai_agent_sessions WHERE agent_id = ? AND session_id = ?')
+    const result = stmt.run(agentId, sessionId)
+    return result.changes > 0
+  }
+
+  getAgentSessionAssignment(agentId: string, sessionId: string) {
+    const stmt = this.db.prepare(`
+      SELECT aas.*, aa.name as agent_name, ws.name as session_name
+      FROM ai_agent_sessions aas
+      JOIN ai_agents aa ON aas.agent_id = aa.id
+      JOIN whatsapp_sessions ws ON aas.session_id = ws.id
+      WHERE aas.agent_id = ? AND aas.session_id = ?
+    `)
+
+    const assignment = stmt.get(agentId, sessionId) as any
+    if (assignment) {
+      assignment.isEnabled = Boolean(assignment.is_enabled)
+    }
+    return assignment
+  }
+
+  getSessionAgents(sessionId: string) {
+    const stmt = this.db.prepare(`
+      SELECT aas.*, aa.name, aa.description, aa.personality, aa.is_active
+      FROM ai_agent_sessions aas
+      JOIN ai_agents aa ON aas.agent_id = aa.id
+      WHERE aas.session_id = ? AND aa.is_active = 1
+      ORDER BY aas.priority DESC, aas.created_at ASC
+    `)
+
+    const agents = stmt.all(sessionId) as any[]
+    return agents.map(agent => ({
+      ...agent,
+      isEnabled: Boolean(agent.is_enabled),
+      isActive: Boolean(agent.is_active)
+    }))
+  }
+
+  getAgentSessions(agentId: string) {
+    const stmt = this.db.prepare(`
+      SELECT aas.*, ws.name, ws.phone_number, ws.status
+      FROM ai_agent_sessions aas
+      JOIN whatsapp_sessions ws ON aas.session_id = ws.id
+      WHERE aas.agent_id = ?
+      ORDER BY aas.created_at DESC
+    `)
+
+    const sessions = stmt.all(agentId) as any[]
+    return sessions.map(session => ({
+      ...session,
+      isEnabled: Boolean(session.is_enabled)
+    }))
+  }
+
+  toggleAgentSessionStatus(agentId: string, sessionId: string, isEnabled: boolean) {
+    const stmt = this.db.prepare(`
+      UPDATE ai_agent_sessions
+      SET is_enabled = ?, updated_at = datetime('now')
+      WHERE agent_id = ? AND session_id = ?
+    `)
+
+    stmt.run(isEnabled ? 1 : 0, agentId, sessionId)
+    return this.getAgentSessionAssignment(agentId, sessionId)
+  }
+
+  // AI Agent Chat Settings (Individual Chat Level Controls)
+  setChatAgentSettings(sessionId: string, contactNumber: string, settings: any) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ai_agent_chat_settings
+      (id, session_id, contact_number, agent_id, is_enabled, auto_reply_enabled, custom_prompt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const id = this.generateId()
+    stmt.run(
+      id,
+      sessionId,
+      contactNumber,
+      settings.agentId || null,
+      settings.isEnabled ? 1 : 0,
+      settings.autoReplyEnabled ? 1 : 0,
+      settings.customPrompt || null
+    )
+
+    return this.getChatAgentSettings(sessionId, contactNumber)
+  }
+
+  getChatAgentSettings(sessionId: string, contactNumber: string) {
+    const stmt = this.db.prepare(`
+      SELECT aacs.*, aa.name as agent_name, aa.personality
+      FROM ai_agent_chat_settings aacs
+      LEFT JOIN ai_agents aa ON aacs.agent_id = aa.id
+      WHERE aacs.session_id = ? AND aacs.contact_number = ?
+    `)
+
+    const settings = stmt.get(sessionId, contactNumber) as any
+    if (settings) {
+      settings.isEnabled = Boolean(settings.is_enabled)
+      settings.autoReplyEnabled = Boolean(settings.auto_reply_enabled)
+    }
+    return settings
+  }
+
+  toggleChatAgentStatus(sessionId: string, contactNumber: string, isEnabled: boolean) {
+    // First check if settings exist
+    let settings = this.getChatAgentSettings(sessionId, contactNumber)
+
+    if (!settings) {
+      // Create default settings
+      settings = this.setChatAgentSettings(sessionId, contactNumber, {
+        isEnabled,
+        autoReplyEnabled: true
+      })
+    } else {
+      // Update existing settings
+      const stmt = this.db.prepare(`
+        UPDATE ai_agent_chat_settings
+        SET is_enabled = ?, updated_at = datetime('now')
+        WHERE session_id = ? AND contact_number = ?
+      `)
+
+      stmt.run(isEnabled ? 1 : 0, sessionId, contactNumber)
+      settings = this.getChatAgentSettings(sessionId, contactNumber)
+    }
+
+    return settings
+  }
+
+  assignAgentToChat(sessionId: string, contactNumber: string, agentId: string) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ai_agent_chat_settings
+      (id, session_id, contact_number, agent_id, is_enabled, auto_reply_enabled)
+      VALUES (?, ?, ?, ?, 1, 1)
+    `)
+
+    const id = this.generateId()
+    stmt.run(id, sessionId, contactNumber, agentId)
+
+    return this.getChatAgentSettings(sessionId, contactNumber)
+  }
+
+  // AI Agent Response Logging
+  logAIResponse(responseData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO ai_agent_responses
+      (id, agent_id, session_id, contact_number, original_message, ai_response,
+       response_time_ms, confidence_score, sentiment)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const id = this.generateId()
+    stmt.run(
+      id,
+      responseData.agentId,
+      responseData.sessionId,
+      responseData.contactNumber,
+      responseData.originalMessage,
+      responseData.aiResponse,
+      responseData.responseTimeMs || 0,
+      responseData.confidenceScore || 0.0,
+      responseData.sentiment || 'neutral'
+    )
+
+    return id
+  }
+
+  getAIResponseHistory(sessionId: string, contactNumber?: string, limit: number = 50) {
+    let query = `
+      SELECT aar.*, aa.name as agent_name
+      FROM ai_agent_responses aar
+      JOIN ai_agents aa ON aar.agent_id = aa.id
+      WHERE aar.session_id = ?
+    `
+    const params = [sessionId]
+
+    if (contactNumber) {
+      query += ' AND aar.contact_number = ?'
+      params.push(contactNumber)
+    }
+
+    query += ' ORDER BY aar.created_at DESC LIMIT ?'
+    params.push(limit)
+
+    const stmt = this.db.prepare(query)
+    return stmt.all(...params)
+  }
+
+  // Get AI Agent Analytics
+  getAIAgentAnalytics(agentId?: string, sessionId?: string) {
+    let query = `
+      SELECT
+        COUNT(*) as total_responses,
+        AVG(response_time_ms) as avg_response_time,
+        AVG(confidence_score) as avg_confidence,
+        COUNT(CASE WHEN sentiment = 'positive' THEN 1 END) as positive_responses,
+        COUNT(CASE WHEN sentiment = 'negative' THEN 1 END) as negative_responses,
+        COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END) as neutral_responses,
+        DATE(created_at) as response_date
+      FROM ai_agent_responses
+      WHERE 1=1
+    `
+    const params = []
+
+    if (agentId) {
+      query += ' AND agent_id = ?'
+      params.push(agentId)
+    }
+
+    if (sessionId) {
+      query += ' AND session_id = ?'
+      params.push(sessionId)
+    }
+
+    query += ' GROUP BY DATE(created_at) ORDER BY response_date DESC LIMIT 30'
+
+    const stmt = this.db.prepare(query)
+    return stmt.all(...params)
+  }
+
+  // AI Provider Management
+  createAIProvider(providerData: any) {
+    const stmt = this.db.prepare(`
+      INSERT INTO ai_providers
+      (id, name, display_name, description, api_endpoint, supported_models,
+       default_model, requires_api_key, is_active, configuration)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const result = stmt.run(
+      providerData.id,
+      providerData.name,
+      providerData.displayName,
+      providerData.description,
+      providerData.apiEndpoint,
+      JSON.stringify(providerData.supportedModels || []),
+      providerData.defaultModel,
+      providerData.requiresApiKey ? 1 : 0,
+      providerData.isActive ? 1 : 0,
+      JSON.stringify(providerData.configuration || {})
+    )
+
+    return this.getAIProvider(providerData.id)
+  }
+
+  getAIProvider(providerId: string) {
+    const stmt = this.db.prepare('SELECT * FROM ai_providers WHERE id = ?')
+    const provider = stmt.get(providerId) as any
+
+    if (provider) {
+      provider.supportedModels = JSON.parse(provider.supported_models || '[]')
+      provider.requiresApiKey = Boolean(provider.requires_api_key)
+      provider.isActive = Boolean(provider.is_active)
+      provider.configuration = JSON.parse(provider.configuration || '{}')
+    }
+
+    return provider
+  }
+
+  getAllAIProviders() {
+    const stmt = this.db.prepare('SELECT * FROM ai_providers ORDER BY display_name')
+    const providers = stmt.all() as any[]
+
+    return providers.map(provider => ({
+      ...provider,
+      supportedModels: JSON.parse(provider.supported_models || '[]'),
+      requiresApiKey: Boolean(provider.requires_api_key),
+      isActive: Boolean(provider.is_active),
+      configuration: JSON.parse(provider.configuration || '{}')
+    }))
+  }
+
+  updateAIProvider(providerId: string, updates: any) {
+    const fields = Object.keys(updates).filter(key => updates[key] !== undefined)
+    if (fields.length === 0) return this.getAIProvider(providerId)
+
+    const setClause = fields.map(field => {
+      if (field === 'displayName') return 'display_name = ?'
+      if (field === 'apiEndpoint') return 'api_endpoint = ?'
+      if (field === 'supportedModels') return 'supported_models = ?'
+      if (field === 'defaultModel') return 'default_model = ?'
+      if (field === 'requiresApiKey') return 'requires_api_key = ?'
+      if (field === 'isActive') return 'is_active = ?'
+      return `${field} = ?`
+    }).join(', ')
+
+    const values = fields.map(field => {
+      if (field === 'supportedModels') return JSON.stringify(updates[field])
+      if (field === 'configuration') return JSON.stringify(updates[field])
+      if (field === 'requiresApiKey' || field === 'isActive') return updates[field] ? 1 : 0
+      return updates[field]
+    })
+
+    const stmt = this.db.prepare(`
+      UPDATE ai_providers
+      SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+
+    stmt.run(...values, providerId)
+    return this.getAIProvider(providerId)
+  }
+
+  deleteAIProvider(providerId: string) {
+    const stmt = this.db.prepare('DELETE FROM ai_providers WHERE id = ?')
+    const result = stmt.run(providerId)
+    return result.changes > 0
+  }
+
+  // AI Provider API Key Management
+  saveProviderAPIKey(keyData: any) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ai_provider_keys
+      (id, provider_id, user_id, api_key_encrypted, api_key_hash, additional_config, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const id = this.generateId()
+    stmt.run(
+      id,
+      keyData.providerId,
+      keyData.userId || 'default',
+      keyData.apiKeyEncrypted,
+      keyData.apiKeyHash,
+      JSON.stringify(keyData.additionalConfig || {}),
+      keyData.isActive ? 1 : 0
+    )
+
+    return this.getProviderAPIKey(keyData.providerId, keyData.userId || 'default')
+  }
+
+  getProviderAPIKey(providerId: string, userId: string = 'default') {
+    const stmt = this.db.prepare(`
+      SELECT * FROM ai_provider_keys
+      WHERE provider_id = ? AND user_id = ? AND is_active = 1
+    `)
+
+    const key = stmt.get(providerId, userId) as any
+    if (key) {
+      key.additionalConfig = JSON.parse(key.additional_config || '{}')
+      key.isActive = Boolean(key.is_active)
+    }
+    return key
+  }
+
+  getAllProviderAPIKeys(userId: string = 'default') {
+    const stmt = this.db.prepare(`
+      SELECT pk.*, p.display_name as provider_name
+      FROM ai_provider_keys pk
+      JOIN ai_providers p ON pk.provider_id = p.id
+      WHERE pk.user_id = ? AND pk.is_active = 1
+      ORDER BY p.display_name
+    `)
+
+    const keys = stmt.all(userId) as any[]
+    return keys.map(key => ({
+      ...key,
+      additionalConfig: JSON.parse(key.additional_config || '{}'),
+      isActive: Boolean(key.is_active)
+    }))
+  }
+
+  deleteProviderAPIKey(providerId: string, userId: string = 'default') {
+    const stmt = this.db.prepare(`
+      DELETE FROM ai_provider_keys
+      WHERE provider_id = ? AND user_id = ?
+    `)
+    const result = stmt.run(providerId, userId)
+    return result.changes > 0
+  }
+
+  // AI Agent Provider Assignments
+  assignProviderToAgent(agentId: string, providerId: string, modelName: string, priority: number = 1) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ai_agent_providers
+      (id, agent_id, provider_id, model_name, priority, fallback_enabled, is_active)
+      VALUES (?, ?, ?, ?, ?, 1, 1)
+    `)
+
+    const id = this.generateId()
+    stmt.run(id, agentId, providerId, modelName, priority)
+
+    return this.getAgentProviderAssignment(agentId, providerId)
+  }
+
+  getAgentProviderAssignment(agentId: string, providerId: string) {
+    const stmt = this.db.prepare(`
+      SELECT app.*, p.display_name as provider_name, p.supported_models
+      FROM ai_agent_providers app
+      JOIN ai_providers p ON app.provider_id = p.id
+      WHERE app.agent_id = ? AND app.provider_id = ?
+    `)
+
+    const assignment = stmt.get(agentId, providerId) as any
+    if (assignment) {
+      assignment.supportedModels = JSON.parse(assignment.supported_models || '[]')
+      assignment.fallbackEnabled = Boolean(assignment.fallback_enabled)
+      assignment.isActive = Boolean(assignment.is_active)
+      assignment.customConfig = JSON.parse(assignment.custom_config || '{}')
+    }
+    return assignment
+  }
+
+  getAgentProviders(agentId: string) {
+    const stmt = this.db.prepare(`
+      SELECT app.*, p.display_name as provider_name, p.supported_models, p.default_model
+      FROM ai_agent_providers app
+      JOIN ai_providers p ON app.provider_id = p.id
+      WHERE app.agent_id = ? AND app.is_active = 1
+      ORDER BY app.priority DESC, app.created_at ASC
+    `)
+
+    const providers = stmt.all(agentId) as any[]
+    return providers.map(provider => ({
+      ...provider,
+      supportedModels: JSON.parse(provider.supported_models || '[]'),
+      fallbackEnabled: Boolean(provider.fallback_enabled),
+      isActive: Boolean(provider.is_active),
+      customConfig: JSON.parse(provider.custom_config || '{}')
+    }))
+  }
+
+  unassignProviderFromAgent(agentId: string, providerId: string) {
+    const stmt = this.db.prepare(`
+      DELETE FROM ai_agent_providers
+      WHERE agent_id = ? AND provider_id = ?
+    `)
+    const result = stmt.run(agentId, providerId)
+    return result.changes > 0
+  }
+
+  private initializeDefaultProviders() {
+    try {
+      // Check if providers already exist
+      const existingProviders = this.getAllAIProviders()
+      if (existingProviders.length > 0) {
+        return // Providers already initialized
+      }
+
+      console.log('🔧 Initializing default AI providers...')
+
+      // Import default providers
+      const { AIProviderService } = require('./ai-providers')
+      const defaultProviders = AIProviderService.getDefaultProviders()
+
+      for (const providerData of defaultProviders) {
+        const providerId = `provider_${providerData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        this.createAIProvider({
+          id: providerId,
+          ...providerData
+        })
+        console.log(`✅ Created default provider: ${providerData.displayName}`)
+      }
+
+      console.log('✅ Default AI providers initialized successfully')
+    } catch (error) {
+      console.error('❌ Error initializing default providers:', error)
+    }
   }
 
   close() {

@@ -2,6 +2,8 @@
 
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import DatabaseService from './database'
+import { AIProviderService, EncryptionService } from './ai-providers'
 
 export interface AIResponse {
   message: string
@@ -40,28 +42,106 @@ class AIService {
     }
   }
 
-  // Generate AI response using OpenAI or Gemini
+  // Generate AI response using configured providers
   async generateResponse(
-    message: string, 
-    context: string[] = [], 
-    personality: string = 'helpful'
+    message: string,
+    context: string[] = [],
+    personality: string = 'helpful',
+    agentId?: string,
+    sessionId?: string
   ): Promise<AIResponse> {
     try {
-      // Try OpenAI first
+      // If agent ID is provided, use agent's configured provider
+      if (agentId) {
+        const agentProviders = DatabaseService.getAgentProviders(agentId)
+
+        for (const agentProvider of agentProviders) {
+          try {
+            const provider = DatabaseService.getAIProvider(agentProvider.provider_id)
+            const apiKey = DatabaseService.getProviderAPIKey(agentProvider.provider_id)
+
+            if (provider && apiKey) {
+              // Decrypt API key
+              const encryptedData = JSON.parse(apiKey.api_key_encrypted)
+              const decryptedKey = EncryptionService.decrypt(encryptedData)
+
+              // Generate response using provider
+              const aiResponse = await AIProviderService.generateResponse(
+                this.buildPrompt(message, context, personality),
+                provider.name,
+                agentProvider.model_name || provider.defaultModel,
+                decryptedKey,
+                provider.configuration
+              )
+
+              // Log the response
+              if (sessionId) {
+                this.logAIResponse(agentId, sessionId, message, aiResponse)
+              }
+
+              return {
+                message: aiResponse.content,
+                confidence: aiResponse.confidence,
+                sentiment: 'neutral',
+                category: 'general',
+                suggestedActions: []
+              }
+            }
+          } catch (providerError) {
+            console.error(`Provider ${agentProvider.provider_id} failed:`, providerError)
+            // Continue to next provider
+          }
+        }
+      }
+
+      // Fallback to legacy providers
       if (this.openai) {
         return await this.generateOpenAIResponse(message, context, personality)
       }
-      
-      // Fallback to Gemini
+
       if (this.gemini) {
         return await this.generateGeminiResponse(message, context, personality)
       }
 
-      // Fallback to rule-based response
+      // Final fallback to rule-based response
       return this.generateRuleBasedResponse(message)
     } catch (error) {
       console.error('AI response generation failed:', error)
       return this.generateRuleBasedResponse(message)
+    }
+  }
+
+  private buildPrompt(message: string, context: string[], personality: string): string {
+    const systemPrompt = this.getSystemPrompt(personality)
+    const contextString = context.length > 0 ? `Previous messages: ${context.join('\n')}` : ''
+
+    return `${systemPrompt}\n\n${contextString}\n\nCurrent message: ${message}\n\nPlease provide a helpful response:`
+  }
+
+  private logAIResponse(agentId: string, sessionId: string, originalMessage: string, aiResponse: any) {
+    try {
+      const responseId = `response_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+      DatabaseService.db.prepare(`
+        INSERT INTO ai_agent_responses
+        (id, agent_id, session_id, contact_number, original_message, ai_response,
+         response_time_ms, confidence_score, provider_used, model_used, tokens_used)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        responseId,
+        agentId,
+        sessionId,
+        'unknown', // We'll need to pass this from the calling context
+        originalMessage,
+        aiResponse.content,
+        aiResponse.responseTime,
+        aiResponse.confidence,
+        aiResponse.provider,
+        aiResponse.model,
+        aiResponse.tokensUsed
+      )
+    } catch (error) {
+      console.error('Error logging AI response:', error)
     }
   }
 

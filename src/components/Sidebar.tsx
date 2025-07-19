@@ -15,7 +15,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Key
+  Key,
+  FileText,
+  UserCog,
+  Bot,
+  Brain
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LanguageSelector, { useCurrentLocale } from './LanguageSelector'
@@ -30,10 +34,13 @@ const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-blue-500' },
   { id: 'sessions', label: 'WhatsApp Numbers', icon: Smartphone, color: 'text-green-500' },
   { id: 'inbox', label: 'Inbox', icon: MessageCircle, color: 'text-purple-500' },
+  { id: 'ultimate-ai', label: 'Ultimate AI Management', icon: Bot, color: 'text-violet-500' },
   { id: 'contacts', label: 'Contacts', icon: Users, color: 'text-orange-500' },
   { id: 'bulk', label: 'Bulk Messaging', icon: Megaphone, color: 'text-red-500' },
+  { id: 'templates', label: 'Templates', icon: FileText, color: 'text-emerald-500' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, color: 'text-indigo-500' },
   { id: 'users', label: 'User Management', icon: Shield, color: 'text-cyan-500' },
+  { id: 'roles', label: 'Roles & Permissions', icon: UserCog, color: 'text-teal-500' },
   { id: 'api', label: 'API & Webhooks', icon: Key, color: 'text-pink-500' }
 ]
 

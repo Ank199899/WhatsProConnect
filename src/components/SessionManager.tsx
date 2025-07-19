@@ -27,6 +27,7 @@ import Button from './ui/Button'
 import Input from './ui/Input'
 import Modal, { ModalHeader, ModalBody, ModalFooter } from './ui/Modal'
 import { cn, formatDate, getTimeAgo, copyToClipboard } from '@/lib/utils'
+import { useRealTime } from '@/contexts/RealTimeContext'
 
 interface SessionManagerProps {
   whatsappManager: WhatsAppManagerClient
@@ -58,10 +59,27 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Use real-time context
+  const { socket, isConnected, subscribe, unsubscribe } = useRealTime()
+
   useEffect(() => {
     loadSessions()
     setupEventListeners()
-  }, [])
+    setupRealTimeListeners()
+
+    // Auto-refresh every 30 seconds if not connected to real-time
+    const autoRefreshInterval = setInterval(() => {
+      if (!isConnected) {
+        console.log('🔄 Auto-refreshing sessions (no real-time connection)')
+        loadSessions()
+      }
+    }, 30000)
+
+    return () => {
+      unsubscribe('sessions')
+      clearInterval(autoRefreshInterval)
+    }
+  }, [isConnected])
 
   const loadSessions = async () => {
     try {
@@ -73,6 +91,22 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
     } finally {
       setLoading(false)
     }
+  }
+
+  const setupRealTimeListeners = () => {
+    if (!socket) return
+
+    // Listen for real-time session updates
+    socket.on('sessions_updated', (updatedSessions) => {
+      console.log('📡 Received real-time sessions update:', updatedSessions)
+      setSessions(updatedSessions)
+    })
+
+    // Subscribe to sessions updates
+    subscribe('sessions', (updatedSessions) => {
+      console.log('📡 Real-time sessions subscription update:', updatedSessions)
+      setSessions(updatedSessions)
+    })
   }
 
   const setupEventListeners = () => {
@@ -122,7 +156,14 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
       if (result.success) {
         setSessionName('')
         setShowCreateModal(false)
+
+        // Immediate refresh and request real-time update
         loadSessions()
+        if (socket) {
+          socket.emit('get_sessions')
+        }
+
+        console.log('✅ Session created successfully, refreshing list')
       } else {
         alert('Failed to create session')
       }
@@ -135,23 +176,43 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
   }
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (window.confirm('Are you sure you want to delete this session? This will disconnect the WhatsApp account.')) {
-      try {
-        await whatsappManager.deleteSession(sessionId)
+    if (!window.confirm('Are you sure you want to delete this session? This will disconnect the WhatsApp account.')) return
+
+    try {
+      console.log('🗑️ Deleting session via WhatsApp Manager:', sessionId)
+      const result = await whatsappManager.deleteSession(sessionId)
+
+      if (result.success) {
+        console.log('✅ Session deleted successfully')
+
+        // Immediate refresh and request real-time update
         loadSessions()
+        if (socket) {
+          socket.emit('get_sessions')
+        }
+
         if (selectedSession === sessionId) {
           setSelectedSession(null)
         }
-      } catch (error) {
-        console.error('Error deleting session:', error)
-        alert('Error deleting session')
+      } else {
+        console.error('❌ Delete failed:', result.message)
+        alert('Failed to delete session: ' + result.message)
       }
+    } catch (error) {
+      console.error('❌ Error deleting session:', error)
+      alert('Error deleting session: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
   }
 
   const handleRefreshSessions = async () => {
     setRefreshing(true)
     await loadSessions()
+
+    // Request real-time update
+    if (socket) {
+      socket.emit('get_sessions')
+    }
+
     setTimeout(() => setRefreshing(false), 1000)
   }
 
@@ -170,22 +231,6 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
     } catch (error) {
       console.error('Error restarting session:', error)
       alert('Error restarting session')
-    }
-  }
-
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm('Are you sure you want to delete this session?')) return
-
-    try {
-      const result = await whatsappManager.deleteSession(sessionId)
-      if (result.success) {
-        onSessionDeleted()
-      } else {
-        alert('Failed to delete session')
-      }
-    } catch (error) {
-      console.error('Error deleting session:', error)
-      alert('Error deleting session')
     }
   }
 
@@ -226,6 +271,17 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Real-time connection status */}
+          <div className={cn(
+            'flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium',
+            isConnected
+              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+          )}>
+            {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            <span>{isConnected ? 'Live' : 'Offline'}</span>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
