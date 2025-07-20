@@ -12,7 +12,7 @@ A powerful, professional WhatsApp management solution that allows you to connect
 - **Session Management**: Persistent WhatsApp sessions with QR code authentication
 - **Responsive UI**: Modern, mobile-friendly interface built with Next.js and Tailwind CSS
 - **Database Integration**: Real data storage with Supabase
-- **Production Ready**: Nginx configuration for deployment on IP 192.168.1.230
+
 
 ## 🚀 Quick Start
 
