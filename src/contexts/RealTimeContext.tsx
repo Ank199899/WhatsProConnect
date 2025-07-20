@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
 
 interface RealTimeData {
@@ -49,19 +49,20 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
   const [subscribers, setSubscribers] = useState<Record<string, ((data: any) => void)[]>>({})
 
   useEffect(() => {
-    // Auto-detect environment and set appropriate URL
+    // Centralized port configuration - NO MORE PORT CHANGES!
     const getSocketUrl = () => {
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname
         const protocol = window.location.protocol
 
+        // Always use port 3001 for backend - FIXED!
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://192.168.1.230:3001'
+          return 'http://localhost:3001'
         } else {
           return `${protocol}//${hostname}:3001`
         }
       }
-      return 'http://192.168.1.230:3001'
+      return 'http://localhost:3001'
     }
 
     const socketUrl = getSocketUrl()
@@ -78,17 +79,24 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
       maxReconnectionAttempts: 10
     })
 
+    // Throttling variables to prevent spam
+    let lastRequestTime = 0
+    const REQUEST_THROTTLE = 3000 // 3 seconds
+
     newSocket.on('connect', () => {
       console.log('🔌 Real-time connection established')
       setIsConnected(true)
 
-      // Request all current data on connect
-      newSocket.emit('get_sessions')
-      newSocket.emit('get_contacts')
-      newSocket.emit('get_messages')
-      newSocket.emit('get_templates')
-      newSocket.emit('get_campaigns')
-      newSocket.emit('get_analytics')
+      // Throttled initial data request
+      const now = Date.now()
+      if (now - lastRequestTime > REQUEST_THROTTLE) {
+        lastRequestTime = now
+        newSocket.emit('get_sessions')
+        // Don't spam all endpoints at once
+        setTimeout(() => newSocket.emit('get_contacts'), 1000)
+        setTimeout(() => newSocket.emit('get_messages'), 2000)
+        setTimeout(() => newSocket.emit('get_analytics'), 3000)
+      }
     })
 
     newSocket.on('disconnect', () => {
@@ -100,50 +108,39 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
       console.log('🔄 Real-time connection restored')
       setIsConnected(true)
 
-      // Request current sessions on reconnect
-      newSocket.emit('get_sessions')
+      // Throttled reconnect data request
+      const now = Date.now()
+      if (now - lastRequestTime > REQUEST_THROTTLE) {
+        lastRequestTime = now
+        newSocket.emit('get_sessions')
+      }
     })
 
-    // Real-time data listeners
-    newSocket.on('sessions_updated', (sessions) => {
-      updateData('sessions', sessions)
-      notifySubscribers('sessions', sessions)
-    })
+    // Real-time data listeners with throttling
+    let lastUpdateTime: Record<string, number> = {}
+    const UPDATE_THROTTLE = 1000 // 1 second
 
-    newSocket.on('contacts_updated', (contacts) => {
-      updateData('contacts', contacts)
-      notifySubscribers('contacts', contacts)
-    })
+    const createThrottledListener = (eventName: string, dataKey: keyof RealTimeData) => {
+      return (data: any) => {
+        const now = Date.now()
+        if (lastUpdateTime[dataKey] && now - lastUpdateTime[dataKey] < UPDATE_THROTTLE) {
+          return // Ignore rapid updates
+        }
+        lastUpdateTime[dataKey] = now
 
-    newSocket.on('messages_updated', (messages) => {
-      updateData('messages', messages)
-      notifySubscribers('messages', messages)
-    })
+        updateData(dataKey, data)
+        notifySubscribers(dataKey as string, data)
+      }
+    }
 
-    newSocket.on('analytics_updated', (analytics) => {
-      updateData('analytics', analytics)
-      notifySubscribers('analytics', analytics)
-    })
-
-    newSocket.on('campaigns_updated', (campaigns) => {
-      updateData('campaigns', campaigns)
-      notifySubscribers('campaigns', campaigns)
-    })
-
-    newSocket.on('templates_updated', (templates) => {
-      updateData('templates', templates)
-      notifySubscribers('templates', templates)
-    })
-
-    newSocket.on('users_updated', (users) => {
-      updateData('users', users)
-      notifySubscribers('users', users)
-    })
-
-    newSocket.on('roles_updated', (roles) => {
-      updateData('roles', roles)
-      notifySubscribers('roles', roles)
-    })
+    newSocket.on('sessions_updated', createThrottledListener('sessions_updated', 'sessions'))
+    newSocket.on('contacts_updated', createThrottledListener('contacts_updated', 'contacts'))
+    newSocket.on('messages_updated', createThrottledListener('messages_updated', 'messages'))
+    newSocket.on('analytics_updated', createThrottledListener('analytics_updated', 'analytics'))
+    newSocket.on('campaigns_updated', createThrottledListener('campaigns_updated', 'campaigns'))
+    newSocket.on('templates_updated', createThrottledListener('templates_updated', 'templates'))
+    newSocket.on('users_updated', createThrottledListener('users_updated', 'users'))
+    newSocket.on('roles_updated', createThrottledListener('roles_updated', 'roles'))
 
     setSocket(newSocket)
 
@@ -182,8 +179,18 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
     channelSubscribers.forEach(callback => callback(data))
   }
 
+  // Throttled emit to prevent spam
+  let lastEmitTime: Record<string, number> = {}
+  const EMIT_THROTTLE = 2000 // 2 seconds
+
   const emit = (event: string, data: any) => {
     if (socket) {
+      const now = Date.now()
+      if (lastEmitTime[event] && now - lastEmitTime[event] < EMIT_THROTTLE) {
+        console.log(`⏳ Emit throttled for event: ${event}`)
+        return
+      }
+      lastEmitTime[event] = now
       socket.emit(event, data)
     }
   }
@@ -220,9 +227,12 @@ export function useRealTimeData<T>(section: keyof RealTimeData): T {
 
 export function useRealTimeSubscription(channel: string, callback: (data: any) => void) {
   const { subscribe, unsubscribe } = useRealTime()
-  
+
+  // Use useCallback to memoize the callback
+  const memoizedCallback = useCallback(callback, [])
+
   useEffect(() => {
-    subscribe(channel, callback)
+    subscribe(channel, memoizedCallback)
     return () => unsubscribe(channel)
-  }, [channel, callback, subscribe, unsubscribe])
+  }, [channel, memoizedCallback, subscribe, unsubscribe])
 }

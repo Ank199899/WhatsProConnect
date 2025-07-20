@@ -48,3 +48,69 @@ html.dark, [data-theme="dark"] {
   background-color: #ffffff !important;
   color: #171717 !important;
 }
+
+/* Enhanced Custom Scrollbar Styles */
+.scrollbar-custom {
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 #f3f4f6;
+}
+
+.scrollbar-custom::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-custom::-webkit-scrollbar-track {
+  background: #f9fafb;
+  border-radius: 12px;
+  margin: 4px 0;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-radius: 12px;
+  border: 2px solid #f9fafb;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  transform: scale(1.1);
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(135deg, #047857, #065f46);
+}
+
+/* Sidebar Navigation Specific Scrollbar */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #10b981, #059669);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  opacity: 0.7;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #059669, #047857);
+  opacity: 1;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  opacity: 1;
+}

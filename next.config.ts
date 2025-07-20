@@ -7,15 +7,13 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['whatsapp-web.js'],
-  },
+  serverExternalPackages: ['whatsapp-web.js'],
   async rewrites() {
     return [
       // Only proxy specific backend API routes, not all API routes
       {
         source: '/api/backend/:path*',
-        destination: 'http://192.168.1.230:3001/api/:path*',
+        destination: 'http://localhost:3001/api/:path*', // FIXED PORT: Backend always 3001
       },
     ];
   },

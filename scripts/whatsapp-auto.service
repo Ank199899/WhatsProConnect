@@ -1,0 +1,47 @@
+[Unit]
+Description=WhatsApp Advanced WebApp Auto Manager
+Documentation=https://github.com/your-repo/whatsapp-advanced-webapp
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=admin1
+Group=admin1
+WorkingDirectory=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp
+ExecStart=/usr/bin/node /home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/scripts/auto-manager.js start
+ExecStop=/usr/bin/node /home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/scripts/auto-manager.js stop
+ExecReload=/usr/bin/node /home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/scripts/auto-manager.js restart
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/admin1
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/logs
+ReadWritePaths=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/sessions
+ReadWritePaths=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/data
+ReadWritePaths=/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp/database
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=whatsapp-auto
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

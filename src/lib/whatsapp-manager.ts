@@ -65,11 +65,12 @@ export class WhatsAppManagerClient {
   private connectionStatusListeners: Array<(isConnected: boolean) => void> = []
 
   constructor(baseUrl?: string) {
-    // Auto-detect environment and set appropriate URL
+    // FIXED PORT CONFIGURATION - Backend always on 3001
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
       const protocol = window.location.protocol
 
+      // FIXED: Always use port 3001 for WhatsApp backend
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
         this.baseUrl = baseUrl || 'http://localhost:3001'
       } else {
@@ -79,7 +80,7 @@ export class WhatsAppManagerClient {
       this.baseUrl = baseUrl || 'http://localhost:3001'
     }
 
-    console.log('🔧 WhatsApp Manager initialized with URL:', this.baseUrl)
+    console.log('🔧 WhatsApp Manager initialized with FIXED URL:', this.baseUrl)
   }
 
   // Initialize socket connection

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import DatabaseService from '@/lib/database'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     agentId: string
-  }
+  }>
 }
 
 // GET - Get AI providers assigned to agent
@@ -13,7 +13,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     
     console.log('🤖 Getting providers for agent:', agentId)
     
@@ -40,7 +40,7 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     const { providerId, modelName, priority = 1 } = await request.json()
     
     console.log('🤖 Assigning provider to agent:', { agentId, providerId, modelName })
@@ -80,7 +80,7 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     const { searchParams } = new URL(request.url)
     const providerId = searchParams.get('providerId')
     

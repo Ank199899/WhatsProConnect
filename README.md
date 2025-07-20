@@ -1,6 +1,6 @@
-# WhatsApp Advanced Web App 📱
+# WhatsPro Connect 📱
 
-A powerful, feature-rich WhatsApp Web application that allows you to connect unlimited WhatsApp numbers, manage conversations, and send bulk messages with real-time data synchronization.
+A powerful, professional WhatsApp management solution that allows you to connect unlimited WhatsApp numbers, manage conversations, and send bulk messages with real-time data synchronization.
 
 ## 🌟 Features
 

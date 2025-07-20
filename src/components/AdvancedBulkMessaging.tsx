@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import { 
   Megaphone, 
@@ -14,22 +14,15 @@ import {
   Trash2, 
   Edit3, 
   Send, 
-  TrendingUp, 
-  FileText, 
+  FileText,
   BarChart3,
-  Calendar,
   Users,
-  MessageSquare,
-  Clock,
   CheckCircle,
-  XCircle,
-  AlertCircle,
   Shield,
   Shuffle,
   List,
   Phone,
   Settings,
-  Timer,
   Ban,
   RefreshCw,
   Target,
@@ -61,7 +54,7 @@ interface Session {
   id: string
   name: string
   phone: string
-  status: 'active' | 'inactive' | 'blocked'
+  status: 'initializing' | 'qr_code' | 'ready' | 'disconnected' | 'auth_failure'
   lastUsed: string
   messagesSent: number
   isBlocked: boolean
@@ -247,7 +240,7 @@ const AdvancedBulkMessaging: React.FC<AdvancedBulkMessagingProps> = ({
             template = freshTemplates.find((t: any) => t.id === templateId)
 
             // Update local templates state
-            setTemplates(freshTemplates)
+            setLocalTemplates(freshTemplates)
           }
         } catch (reloadError) {
           console.error('❌ Failed to reload templates:', reloadError)
@@ -270,7 +263,7 @@ const AdvancedBulkMessaging: React.FC<AdvancedBulkMessagingProps> = ({
       // Get first session
       const sessionId = campaign.sessions[0]
       const session = sessions.find(s => s.id === sessionId)
-      if (!session || (session.status !== 'active' && session.status !== 'ready')) {
+      if (!session || session.status !== 'ready') {
         console.error('❌ Session not found or not ready:', sessionId, 'Available sessions:', sessions.map(s => ({ id: s.id, status: s.status })))
         throw new Error('No ready session found')
       }
@@ -484,8 +477,13 @@ const AdvancedBulkMessaging: React.FC<AdvancedBulkMessagingProps> = ({
     }, 100)
 
     // Load blocked numbers from localStorage or API
-    const savedBlockedNumbers = LocalStorage.getBlockedNumbers ? LocalStorage.getBlockedNumbers() : []
-    setBlockedNumbers(savedBlockedNumbers)
+    try {
+      const savedBlockedNumbers = JSON.parse(localStorage.getItem('blockedNumbers') || '[]')
+      setBlockedNumbers(savedBlockedNumbers)
+    } catch (error) {
+      console.error('Failed to load blocked numbers:', error)
+      setBlockedNumbers([])
+    }
   }, [isMounted])
 
   // Real-time sync with localStorage on window focus and storage events
@@ -550,7 +548,7 @@ const AdvancedBulkMessaging: React.FC<AdvancedBulkMessagingProps> = ({
       console.log('📝 Syncing with localStorage templates:', refreshedTemplates)
       setLocalTemplates(refreshedTemplates)
     }
-  }, [templates, isMounted])
+  }, [templates, isMounted]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Periodic sync for real-time updates (every 2 seconds)
   useEffect(() => {
@@ -1877,18 +1875,19 @@ const AdvancedBulkMessaging: React.FC<AdvancedBulkMessagingProps> = ({
                         }
                       }}
                       className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                      disabled={session.status === 'blocked'}
+                      disabled={session.status !== 'ready'}
                     />
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-sm font-medium text-black">{session.name}</p>
                         <span className={cn(
                           'px-2 py-1 rounded-full text-xs font-medium',
-                          session.status === 'active' ? 'bg-green-100 text-green-800' :
-                          session.status === 'blocked' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                          session.status === 'ready' ? 'bg-green-100 text-green-800' :
+                          session.status === 'disconnected' || session.status === 'auth_failure' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
                         )}>
-                          {session.status === 'active' ? '🟢 Active' :
-                           session.status === 'blocked' ? '🔴 Blocked' : '⚪ Inactive'}
+                          {session.status === 'ready' ? '🟢 Ready' :
+                           session.status === 'disconnected' || session.status === 'auth_failure' ? '🔴 Disconnected' :
+                           session.status === 'qr_code' ? '📱 QR Code' : '⚪ Initializing'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-600">{session.phone}</p>

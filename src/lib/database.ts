@@ -773,11 +773,23 @@ class LocalDatabase {
     const contacts = stmt.all() as any[]
 
     return contacts.map(contact => ({
-      ...contact,
+      id: contact.id,
+      name: contact.name,
+      phone: contact.phone_number, // Map phone_number to phone
+      email: contact.email,
+      address: contact.address,
       tags: JSON.parse(contact.tags || '[]'),
-      customFields: JSON.parse(contact.custom_fields || '{}'),
+      notes: contact.notes,
+      lastMessageAt: contact.last_message_at,
+      messageCount: contact.message_count || 0,
       isBlocked: Boolean(contact.is_blocked),
-      isFavorite: Boolean(contact.is_favorite)
+      isFavorite: Boolean(contact.is_favorite),
+      createdAt: contact.created_at,
+      updatedAt: contact.updated_at,
+      sessionId: contact.session_id,
+      profilePicture: contact.profile_picture,
+      status: contact.status || 'active',
+      customFields: JSON.parse(contact.custom_fields || '{}')
     }))
   }
 

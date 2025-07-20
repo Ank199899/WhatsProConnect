@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import DatabaseService from '@/lib/database'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     sessionId: string
-  }
+  }>
 }
 
 export async function GET(
@@ -12,7 +12,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const { sessionId } = params
+    const { sessionId } = await params
     
     console.log('💬 Getting chats for session:', sessionId)
     

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import DatabaseService from '@/lib/database'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     agentId: string
-  }
+  }>
 }
 
 // GET - Get specific AI agent
@@ -13,7 +13,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     
     console.log('🤖 Getting AI agent:', agentId)
     
@@ -47,7 +47,7 @@ export async function PUT(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     const updates = await request.json()
     
     console.log('🤖 Updating AI agent:', agentId, updates)
@@ -82,7 +82,7 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
-    const { agentId } = params
+    const { agentId } = await params
     
     console.log('🤖 Deleting AI agent:', agentId)
     

@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import DatabaseService from '@/lib/database'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     sessionId: string
     contactId: string
-  }
+  }>
 }
 
 export async function GET(
@@ -13,7 +13,7 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const { sessionId, contactId } = params
+    const { sessionId, contactId } = await params
     const decodedContactId = decodeURIComponent(contactId)
     
     console.log('📨 Getting messages for session:', sessionId, 'contact:', decodedContactId)

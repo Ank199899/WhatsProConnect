@@ -29,8 +29,13 @@ import Modal, { ModalHeader, ModalBody, ModalFooter } from './ui/Modal'
 import { cn, formatDate, getTimeAgo, copyToClipboard } from '@/lib/utils'
 import { useRealTime } from '@/contexts/RealTimeContext'
 
-interface SessionManagerProps {
+interface WhatsAppNumberManagerProps {
   whatsappManager: WhatsAppManagerClient
+  sessions?: SessionStatus[]
+  onSessionCreated?: () => void
+  onSessionDeleted?: () => void
+  onSessionSelected?: (sessionId: string) => void
+  selectedSession?: string | null
 }
 
 const statusColors = {
@@ -49,45 +54,52 @@ const statusIcons = {
   auth_failure: AlertTriangle
 }
 
-export default function SessionManager({ whatsappManager }: SessionManagerProps) {
-  const [sessions, setSessions] = useState<SessionStatus[]>([])
+export default function WhatsAppNumberManager({
+  whatsappManager,
+  sessions: propSessions,
+  onSessionCreated,
+  onSessionDeleted,
+  onSessionSelected,
+  selectedSession: propSelectedSession
+}: WhatsAppNumberManagerProps) {
+  const [whatsappNumbers, setWhatsappNumbers] = useState<SessionStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
-  const [sessionName, setSessionName] = useState('')
-  const [qrCodes, setQrCodes] = useState<{ [sessionId: string]: string }>({})
+  const [numberName, setNumberName] = useState('')
+  const [qrCodes, setQrCodes] = useState<{ [numberId: string]: string }>({})
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [selectedNumber, setSelectedNumber] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   // Use real-time context
   const { socket, isConnected, subscribe, unsubscribe } = useRealTime()
 
   useEffect(() => {
-    loadSessions()
+    loadWhatsAppNumbers()
     setupEventListeners()
     setupRealTimeListeners()
 
     // Auto-refresh every 30 seconds if not connected to real-time
     const autoRefreshInterval = setInterval(() => {
       if (!isConnected) {
-        console.log('🔄 Auto-refreshing sessions (no real-time connection)')
-        loadSessions()
+        console.log('🔄 Auto-refreshing WhatsApp numbers (no real-time connection)')
+        loadWhatsAppNumbers()
       }
     }, 30000)
 
     return () => {
-      unsubscribe('sessions')
+      unsubscribe('whatsapp_numbers')
       clearInterval(autoRefreshInterval)
     }
   }, [isConnected])
 
-  const loadSessions = async () => {
+  const loadWhatsAppNumbers = async () => {
     try {
       setLoading(true)
-      const sessionList = await whatsappManager.getSessions()
-      setSessions(sessionList)
+      const numberList = await whatsappManager.getSessions()
+      setWhatsappNumbers(numberList)
     } catch (error) {
-      console.error('Error loading sessions:', error)
+      console.error('Error loading WhatsApp numbers:', error)
     } finally {
       setLoading(false)
     }
@@ -96,16 +108,16 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
   const setupRealTimeListeners = () => {
     if (!socket) return
 
-    // Listen for real-time session updates
-    socket.on('sessions_updated', (updatedSessions) => {
-      console.log('📡 Received real-time sessions update:', updatedSessions)
-      setSessions(updatedSessions)
+    // Listen for real-time WhatsApp number updates
+    socket.on('whatsapp_numbers_updated', (updatedNumbers) => {
+      console.log('📡 Received real-time WhatsApp numbers update:', updatedNumbers)
+      setWhatsappNumbers(updatedNumbers)
     })
 
-    // Subscribe to sessions updates
-    subscribe('sessions', (updatedSessions) => {
-      console.log('📡 Real-time sessions subscription update:', updatedSessions)
-      setSessions(updatedSessions)
+    // Subscribe to WhatsApp numbers updates
+    subscribe('whatsapp_numbers', (updatedNumbers) => {
+      console.log('📡 Real-time WhatsApp numbers subscription update:', updatedNumbers)
+      setWhatsappNumbers(updatedNumbers)
     })
   }
 
@@ -116,7 +128,7 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
         ...prev,
         [data.sessionId]: data.qrCode
       }))
-      loadSessions() // Refresh sessions to update status
+      loadWhatsAppNumbers() // Refresh numbers to update status
     })
 
     // Listen for client ready
@@ -126,111 +138,111 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
         delete newQrCodes[data.sessionId]
         return newQrCodes
       })
-      loadSessions()
+      loadWhatsAppNumbers()
     })
 
     // Listen for auth failure
     whatsappManager.onAuthFailure((data) => {
-      console.error('Authentication failed for session:', data.sessionId)
-      loadSessions()
+      console.error('Authentication failed for WhatsApp number:', data.sessionId)
+      loadWhatsAppNumbers()
     })
 
     // Listen for disconnection
     whatsappManager.onClientDisconnected((data) => {
       console.log('Client disconnected:', data.sessionId)
-      loadSessions()
+      loadWhatsAppNumbers()
     })
 
     // Listen for new messages to update stats
     whatsappManager.onMessage((data) => {
-      loadSessions() // Refresh to update message counts
+      loadWhatsAppNumbers() // Refresh to update message counts
     })
   }
 
-  const handleCreateSession = async () => {
+  const handleCreateWhatsAppNumber = async () => {
     if (isCreating) return
 
     setIsCreating(true)
     try {
-      const result = await whatsappManager.createSession(sessionName || undefined)
+      const result = await whatsappManager.createSession(numberName || undefined)
       if (result.success) {
-        setSessionName('')
+        setNumberName('')
         setShowCreateModal(false)
 
         // Immediate refresh and request real-time update
-        loadSessions()
+        loadWhatsAppNumbers()
         if (socket) {
-          socket.emit('get_sessions')
+          socket.emit('get_whatsapp_numbers')
         }
 
-        console.log('✅ Session created successfully, refreshing list')
+        console.log('✅ WhatsApp number created successfully, refreshing list')
       } else {
-        alert('Failed to create session')
+        alert('Failed to create WhatsApp number')
       }
     } catch (error) {
-      console.error('Error creating session:', error)
-      alert('Error creating session')
+      console.error('Error creating WhatsApp number:', error)
+      alert('Error creating WhatsApp number')
     } finally {
       setIsCreating(false)
     }
   }
 
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!window.confirm('Are you sure you want to delete this session? This will disconnect the WhatsApp account.')) return
+  const handleDeleteWhatsAppNumber = async (numberId: string) => {
+    if (!window.confirm('Are you sure you want to delete this WhatsApp number? This will disconnect the WhatsApp account.')) return
 
     try {
-      console.log('🗑️ Deleting session via WhatsApp Manager:', sessionId)
-      const result = await whatsappManager.deleteSession(sessionId)
+      console.log('🗑️ Deleting WhatsApp number via WhatsApp Manager:', numberId)
+      const result = await whatsappManager.deleteSession(numberId)
 
       if (result.success) {
-        console.log('✅ Session deleted successfully')
+        console.log('✅ WhatsApp number deleted successfully')
 
         // Immediate refresh and request real-time update
-        loadSessions()
+        loadWhatsAppNumbers()
         if (socket) {
-          socket.emit('get_sessions')
+          socket.emit('get_whatsapp_numbers')
         }
 
-        if (selectedSession === sessionId) {
-          setSelectedSession(null)
+        if (selectedNumber === numberId) {
+          setSelectedNumber(null)
         }
       } else {
         console.error('❌ Delete failed:', result.message)
-        alert('Failed to delete session: ' + result.message)
+        alert('Failed to delete WhatsApp number: ' + result.message)
       }
     } catch (error) {
-      console.error('❌ Error deleting session:', error)
-      alert('Error deleting session: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      console.error('❌ Error deleting WhatsApp number:', error)
+      alert('Error deleting WhatsApp number: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
   }
 
-  const handleRefreshSessions = async () => {
+  const handleRefreshWhatsAppNumbers = async () => {
     setRefreshing(true)
-    await loadSessions()
+    await loadWhatsAppNumbers()
 
     // Request real-time update
     if (socket) {
-      socket.emit('get_sessions')
+      socket.emit('get_whatsapp_numbers')
     }
 
     setTimeout(() => setRefreshing(false), 1000)
   }
 
-  const handleSessionSelect = (sessionId: string) => {
-    setSelectedSession(selectedSession === sessionId ? null : sessionId)
+  const handleWhatsAppNumberSelect = (numberId: string) => {
+    setSelectedNumber(selectedNumber === numberId ? null : numberId)
   }
 
-  const handleCopySessionId = (sessionId: string) => {
-    copyToClipboard(sessionId)
+  const handleCopyWhatsAppNumberId = (numberId: string) => {
+    copyToClipboard(numberId)
   }
 
-  const handleRestartSession = async (sessionId: string) => {
+  const handleRestartWhatsAppNumber = async (numberId: string) => {
     try {
-      await whatsappManager.restartSession(sessionId)
-      loadSessions()
+      await whatsappManager.restartSession(numberId)
+      loadWhatsAppNumbers()
     } catch (error) {
-      console.error('Error restarting session:', error)
-      alert('Error restarting session')
+      console.error('Error restarting WhatsApp number:', error)
+      alert('Error restarting WhatsApp number')
     }
   }
 
@@ -263,10 +275,10 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
             <Smartphone className="w-8 h-8 mr-3 text-green-600" />
-            WhatsApp Sessions
+            WhatsApp Numbers
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage your WhatsApp connections and monitor session status
+            Manage your WhatsApp connections and monitor number status
           </p>
         </div>
 
@@ -285,7 +297,7 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefreshSessions}
+            onClick={handleRefreshWhatsAppNumbers}
             disabled={refreshing}
             icon={<RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />}
           >
@@ -297,7 +309,7 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
             icon={<Plus size={16} />}
             className="bg-green-600 hover:bg-green-700"
           >
-            New Session
+            Add WhatsApp Number
           </Button>
         </div>
       </div>
@@ -310,8 +322,8 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
               <Smartphone className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Sessions</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{sessions.length}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Numbers</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{whatsappNumbers.length}</p>
             </div>
           </div>
         </Card>
@@ -322,9 +334,9 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
               <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Sessions</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Connected</p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {sessions.filter(s => s.status === 'ready').length}
+                {whatsappNumbers.filter(s => s.status === 'ready').length}
               </p>
             </div>
           </div>
@@ -338,7 +350,7 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending QR</p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {sessions.filter(s => s.status === 'qr_code').length}
+                {whatsappNumbers.filter(s => s.status === 'qr_code').length}
               </p>
             </div>
           </div>
@@ -352,72 +364,72 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Messages</p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {sessions.reduce((sum, s) => sum + (s.stats?.totalMessages || 0), 0)}
+                {whatsappNumbers.reduce((sum, s) => sum + (s.stats?.totalMessages || 0), 0)}
               </p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Sessions List */}
+      {/* WhatsApp Numbers List */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">WhatsApp Sessions</h2>
+          <h2 className="text-lg font-semibold text-gray-900">WhatsApp Numbers</h2>
         </div>
         
-        {sessions.length === 0 ? (
+        {whatsappNumbers.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
-            No sessions created yet. Create your first session to get started.
+            No WhatsApp numbers created yet. Create your first WhatsApp number to get started.
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {sessions.map((session) => (
-              <div key={session.id} className="p-6">
+            {whatsappNumbers.map((whatsappNumber) => (
+              <div key={whatsappNumber.id} className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
                       <h3 className="text-lg font-medium text-gray-900">
-                        {session.name}
+                        {whatsappNumber.name}
                       </h3>
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(session.status)}`}>
-                        {getStatusText(session.status)}
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(whatsappNumber.status)}`}>
+                        {getStatusText(whatsappNumber.status)}
                       </span>
                     </div>
-                    
+
                     <div className="mt-2 space-y-1">
-                      {session.phoneNumber && (
+                      {whatsappNumber.phoneNumber && (
                         <p className="text-sm text-gray-600">
-                          📱 {session.phoneNumber}
+                          📱 {whatsappNumber.phoneNumber}
                         </p>
                       )}
                       <p className="text-sm text-gray-500">
-                        Created: {new Date(session.createdAt).toLocaleString()}
+                        Created: {new Date(whatsappNumber.createdAt).toLocaleString()}
                       </p>
-                      {session.stats && (
+                      {whatsappNumber.stats && (
                         <div className="flex space-x-4 text-sm text-gray-600">
-                          <span>👥 {session.stats.totalContacts} contacts</span>
-                          <span>💬 {session.stats.totalMessages} messages</span>
+                          <span>👥 {whatsappNumber.stats.totalContacts} contacts</span>
+                          <span>💬 {whatsappNumber.stats.totalMessages} messages</span>
                         </div>
                       )}
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    {session.status === 'ready' && (
+                    {whatsappNumber.status === 'ready' && onSessionSelected && (
                       <button
-                        onClick={() => onSessionSelected(session.id)}
+                        onClick={() => onSessionSelected(whatsappNumber.id)}
                         className={`px-4 py-2 text-sm font-medium rounded-md ${
-                          selectedSession === session.id
+                          propSelectedSession === whatsappNumber.id
                             ? 'bg-blue-600 text-white'
                             : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                         }`}
                       >
-                        {selectedSession === session.id ? 'Selected' : 'Select'}
+                        {propSelectedSession === whatsappNumber.id ? 'Selected' : 'Select'}
                       </button>
                     )}
-                    
+
                     <button
-                      onClick={() => handleDeleteSession(session.id)}
+                      onClick={() => handleDeleteWhatsAppNumber(whatsappNumber.id)}
                       className="px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200"
                     >
                       Delete
@@ -426,9 +438,9 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
                 </div>
 
                 {/* QR Code Display */}
-                {session.status === 'qr_code' && qrCodes[session.id] && (
+                {whatsappNumber.status === 'qr_code' && qrCodes[whatsappNumber.id] && (
                   <div className="mt-4">
-                    <QRCodeDisplay qrCode={qrCodes[session.id]} />
+                    <QRCodeDisplay qrCode={qrCodes[whatsappNumber.id]} />
                   </div>
                 )}
               </div>
@@ -441,13 +453,60 @@ export default function SessionManager({ whatsappManager }: SessionManagerProps)
       <div className="bg-blue-50 rounded-lg p-6">
         <h3 className="text-lg font-medium text-blue-900 mb-2">How to Connect</h3>
         <ol className="list-decimal list-inside space-y-2 text-blue-800">
-          <li>Click &quot;Create Session&quot; to start a new WhatsApp connection</li>
+          <li>Click &quot;Add WhatsApp Number&quot; to start a new WhatsApp connection</li>
           <li>Scan the QR code with your WhatsApp mobile app</li>
           <li>Go to WhatsApp → Settings → Linked Devices → &quot;Link a Device&quot;</li>
           <li>Scan the QR code displayed above</li>
-          <li>Once connected, the session will show as &quot;Ready&quot;</li>
+          <li>Once connected, the WhatsApp number will show as &quot;Ready&quot;</li>
         </ol>
       </div>
+
+      {/* Create WhatsApp Number Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Add New WhatsApp Number"
+        size="md"
+      >
+        <ModalBody>
+          <div className="space-y-4">
+            <Input
+              label="WhatsApp Number Name"
+              value={numberName}
+              onChange={(e) => setNumberName(e.target.value)}
+              placeholder="Enter a name for this WhatsApp number (optional)"
+            />
+
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">What happens next?</h4>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
+                <li>A new WhatsApp number will be created</li>
+                <li>You'll see a QR code to scan with your phone</li>
+                <li>Open WhatsApp → Settings → Linked Devices</li>
+                <li>Tap "Link a Device" and scan the QR code</li>
+                <li>Your WhatsApp will be connected and ready to use</li>
+              </ol>
+            </div>
+          </div>
+        </ModalBody>
+
+        <ModalFooter>
+          <Button
+            variant="outline"
+            onClick={() => setShowCreateModal(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateWhatsAppNumber}
+            disabled={isCreating}
+            icon={isCreating ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {isCreating ? 'Creating...' : 'Add WhatsApp Number'}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

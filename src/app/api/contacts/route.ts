@@ -59,3 +59,76 @@ export async function POST(request: NextRequest) {
     }, { status: 500 })
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const url = new URL(request.url)
+    const contactId = url.searchParams.get('id')
+
+    if (!contactId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Contact ID is required'
+      }, { status: 400 })
+    }
+
+    const updateData = await request.json()
+    console.log('📝 Updating contact:', contactId, 'with data:', updateData)
+
+    const updatedContact = DatabaseService.updateContact(contactId, updateData)
+
+    if (updatedContact) {
+      return NextResponse.json({
+        success: true,
+        contact: updatedContact
+      })
+    } else {
+      return NextResponse.json({
+        success: false,
+        error: 'Contact not found'
+      }, { status: 404 })
+    }
+  } catch (error) {
+    console.error('❌ Error updating contact:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const url = new URL(request.url)
+    const contactId = url.searchParams.get('id')
+
+    if (!contactId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Contact ID is required'
+      }, { status: 400 })
+    }
+
+    console.log('🗑️ Deleting contact:', contactId)
+
+    const deleted = DatabaseService.deleteContact(contactId)
+
+    if (deleted) {
+      return NextResponse.json({
+        success: true,
+        message: 'Contact deleted successfully'
+      })
+    } else {
+      return NextResponse.json({
+        success: false,
+        error: 'Contact not found'
+      }, { status: 404 })
+    }
+  } catch (error) {
+    console.error('❌ Error deleting contact:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}

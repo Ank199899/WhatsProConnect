@@ -23,6 +23,7 @@ import AIAgentManagement from '@/components/AIAgentManagement'
 import AdvancedAIAgentManagement from '@/components/AdvancedAIAgentManagement'
 import AIProviderSettings from '@/components/AIProviderSettings'
 import UltimateAIManagement from '@/components/UltimateAIManagement'
+import FloatingElements from '@/components/FloatingElements'
 import { RealTimeProvider } from '@/contexts/RealTimeContext'
 
 export default function Home() {
@@ -139,9 +140,12 @@ export default function Home() {
   return (
     <ThemeProvider>
       <RealTimeProvider>
-        <main className="flex h-screen bg-white">
+        <main className="flex h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-emerald-50/20 relative">
+          {/* Professional Background Elements */}
+          <FloatingElements />
+
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-          <div className="flex-1 overflow-auto bg-gray-50">
+          <div className="flex-1 overflow-auto bg-gradient-to-br from-white/95 via-gray-50/90 to-emerald-50/30 backdrop-blur-sm relative z-10">
             {renderActiveComponent()}
           </div>
         </main>

@@ -16,8 +16,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WhatsApp Pro - Advanced Manager",
-  description: "Professional WhatsApp management platform with multi-account support",
+  title: "WhatsPro Connect - Professional WhatsApp Solution",
+  description: "Professional WhatsApp management platform with advanced messaging capabilities",
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', type: 'image/x-icon' }
+    ],
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -26,27 +33,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-theme="light">
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                // Always default to light mode
-                const theme = localStorage.getItem('theme') || 'light';
-                // Force light mode regardless of system preference
-                document.documentElement.classList.remove('dark');
-                document.documentElement.classList.add('light');
-                // Set theme to light in localStorage if not set
-                if (!localStorage.getItem('theme')) {
-                  localStorage.setItem('theme', 'light');
-                }
-              } catch (e) {
-                document.documentElement.classList.add('light');
-              }
-            `,
-          }}
-        />
+
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

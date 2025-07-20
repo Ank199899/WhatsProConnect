@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { WhatsAppManagerClient, SessionStatus } from '@/lib/whatsapp-manager'
-import SessionManager from './SessionManager'
+import WhatsAppNumberManager from './SessionManager'
 import Inbox from './Inbox'
 import BulkMessaging from './BulkMessaging'
 import Analytics from './Analytics'
@@ -50,7 +50,7 @@ export default function Dashboard({ whatsappManager, isConnected }: DashboardPro
   }
 
   const tabs = [
-    { id: 'sessions', name: 'Sessions', icon: '📱' },
+    { id: 'sessions', name: 'WhatsApp Numbers', icon: '📱' },
     { id: 'inbox', name: 'Inbox', icon: '💬' },
     { id: 'bulk', name: 'Bulk Messaging', icon: '📢' },
     { id: 'analytics', name: 'Analytics', icon: '📊' }
@@ -119,7 +119,7 @@ export default function Dashboard({ whatsappManager, isConnected }: DashboardPro
         ) : (
           <>
             {activeTab === 'sessions' && (
-              <SessionManager
+              <WhatsAppNumberManager
                 whatsappManager={whatsappManager}
                 sessions={sessions}
                 onSessionCreated={handleSessionCreated}
