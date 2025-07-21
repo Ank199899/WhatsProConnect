@@ -53,9 +53,6 @@ npm run dev          # Next.js frontend
 npm run whatsapp-server  # WhatsApp backend
 ```
 
-5. **Access Application**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001
 
 ## 🏗️ Production Deployment
 
