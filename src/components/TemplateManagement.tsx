@@ -85,6 +85,10 @@ function TemplateManagementComponent() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // Bulk selection state
+  const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
+  const [bulkMode, setBulkMode] = useState(false)
+
   // Local state for templates management
   const [localTemplates, setLocalTemplates] = useState<Template[]>([])
 
@@ -94,7 +98,7 @@ function TemplateManagementComponent() {
   const [formData, setFormData] = useState({
     name: '',
     category: '',
-    type: 'text' as Template['type'],
+    type: 'image' as Template['type'], // Changed from 'text' to 'image' to show media upload by default
     content: '',
     variables: [] as string[],
     language: 'en',
@@ -113,8 +117,6 @@ function TemplateManagementComponent() {
     const initializeComponent = async () => {
       try {
         await loadTemplates()
-        // Add sample templates if none exist
-        await initializeSampleTemplates()
       } catch (error) {
         console.error('Error initializing TemplateManagement:', error)
         setHasError(true)
@@ -195,17 +197,22 @@ function TemplateManagementComponent() {
   const loadTemplates = async () => {
     setLoading(true)
     try {
-      // Load from localStorage
-      const { LocalStorage } = await import('@/lib/local-storage')
-      const loadedTemplates = LocalStorage.getTemplates()
+      console.log('📝 Loading templates from API...')
 
-      console.log('📝 Loaded templates from localStorage:', loadedTemplates)
+      const response = await fetch('/api/templates')
+      const result = await response.json()
 
-      // Update local state
-      setLocalTemplates(loadedTemplates)
+      if (result.success) {
+        console.log('📝 Loaded templates from API:', result.templates)
+        setLocalTemplates(result.templates || [])
+      } else {
+        console.error('Failed to load templates:', result.error)
+        setLocalTemplates([])
+      }
 
     } catch (error) {
       console.error('Error loading templates:', error)
+      setLocalTemplates([])
     } finally {
       setLoading(false)
     }
@@ -245,9 +252,8 @@ function TemplateManagementComponent() {
 
       console.log('Creating template with data:', formData)
 
-      // Create template object
-      const newTemplate: Template = {
-        id: `template_${Date.now()}`,
+      // Create template object with media support
+      const templateData = {
         name: formData.name.trim(),
         category: formData.category.trim(),
         type: formData.type,
@@ -255,30 +261,38 @@ function TemplateManagementComponent() {
         variables: extractVariables(formData.content),
         language: formData.language,
         status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: 'current_user',
-        usageCount: 0,
-        rating: 0,
-        tags: formData.tags
+        tags: formData.tags,
+        mediaUrl: formData.mediaUrl || null,
+        mediaType: formData.mediaType || null,
+        mediaCaption: formData.mediaCaption || null
       }
 
-      console.log('New template object:', newTemplate)
+      console.log('Creating template via API:', templateData)
 
-      // Save to localStorage
-      const { LocalStorage } = await import('@/lib/local-storage')
-      LocalStorage.createTemplate(newTemplate)
+      // Save via API
+      const response = await fetch('/api/templates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(templateData)
+      })
 
-      // Update local state
-      const updatedTemplates = [...displayTemplates, newTemplate]
-      setLocalTemplates(updatedTemplates)
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create template')
+      }
+
+      console.log('✅ Template created successfully:', result.template)
+
+      // Refresh templates list
+      await loadTemplates()
 
       setShowCreateModal(false)
       resetForm()
 
-      // Show success message
-      console.log('✅ Template created successfully:', newTemplate.name)
-      alert(`Template "${newTemplate.name}" created successfully!`)
+      alert('Template created successfully!')
 
     } catch (error) {
       console.error('Error creating template:', error)
@@ -297,9 +311,16 @@ function TemplateManagementComponent() {
   // Export templates to JSON file
   const handleExportTemplates = async () => {
     try {
-      const { LocalStorage } = await import('@/lib/local-storage')
-      const templates = LocalStorage.getTemplates()
+      console.log('📤 Exporting templates...')
 
+      const response = await fetch('/api/templates')
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch templates')
+      }
+
+      const templates = result.templates || []
       const dataStr = JSON.stringify(templates, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
 
@@ -313,8 +334,10 @@ function TemplateManagementComponent() {
       URL.revokeObjectURL(url)
 
       console.log('✅ Templates exported successfully')
+      alert(`Successfully exported ${templates.length} templates!`)
     } catch (error) {
       console.error('Error exporting templates:', error)
+      alert('Error exporting templates. Please try again.')
     }
   }
 
@@ -328,6 +351,9 @@ function TemplateManagementComponent() {
       if (!file) return
 
       try {
+        setLoading(true)
+        console.log('📥 Importing templates...')
+
         const text = await file.text()
         const importedTemplates = JSON.parse(text)
 
@@ -336,30 +362,160 @@ function TemplateManagementComponent() {
           return
         }
 
-        const { LocalStorage } = await import('@/lib/local-storage')
-        const existingTemplates = LocalStorage.getTemplates()
+        let successCount = 0
+        let errorCount = 0
 
-        // Add imported templates with new IDs to avoid conflicts
-        const newTemplates = importedTemplates.map(template => ({
-          ...template,
-          id: `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }))
+        // Import each template via API
+        for (const template of importedTemplates) {
+          try {
+            const templateData = {
+              name: template.name || 'Imported Template',
+              category: template.category || 'Imported',
+              type: template.type || 'text',
+              content: template.content || '',
+              variables: template.variables || [],
+              language: template.language || 'en',
+              status: 'draft',
+              tags: template.tags || [],
+              mediaUrl: template.mediaUrl || null,
+              mediaType: template.mediaType || null,
+              mediaCaption: template.mediaCaption || null
+            }
 
-        const allTemplates = [...existingTemplates, ...newTemplates]
-        LocalStorage.saveTemplates(allTemplates)
-        setLocalTemplates(allTemplates)
+            const response = await fetch('/api/templates', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(templateData)
+            })
 
-        console.log(`✅ Imported ${newTemplates.length} templates successfully`)
-        alert(`Successfully imported ${newTemplates.length} templates!`)
+            const result = await response.json()
+
+            if (result.success) {
+              successCount++
+            } else {
+              errorCount++
+              console.warn('Failed to import template:', template.name, result.error)
+            }
+          } catch (error) {
+            errorCount++
+            console.error('Error importing template:', template.name, error)
+          }
+        }
+
+        // Refresh templates list
+        await loadTemplates()
+
+        console.log(`✅ Import completed: ${successCount} success, ${errorCount} errors`)
+
+        if (successCount > 0) {
+          alert(`Successfully imported ${successCount} templates!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`)
+        } else {
+          alert('No templates were imported. Please check the file format.')
+        }
 
       } catch (error) {
         console.error('Error importing templates:', error)
         alert('Error importing templates. Please check the file format.')
+      } finally {
+        setLoading(false)
       }
     }
     input.click()
+  }
+
+  // Bulk Actions
+  const toggleBulkMode = () => {
+    setBulkMode(!bulkMode)
+    setSelectedTemplates([])
+  }
+
+  const toggleTemplateSelection = (templateId: string) => {
+    setSelectedTemplates(prev =>
+      prev.includes(templateId)
+        ? prev.filter(id => id !== templateId)
+        : [...prev, templateId]
+    )
+  }
+
+  const selectAllTemplates = () => {
+    if (selectedTemplates.length === filteredTemplates.length) {
+      setSelectedTemplates([])
+    } else {
+      setSelectedTemplates(filteredTemplates.map(t => t.id))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedTemplates.length === 0) return
+
+    const confirmed = confirm(`Are you sure you want to delete ${selectedTemplates.length} templates?`)
+    if (!confirmed) return
+
+    try {
+      setLoading(true)
+      let successCount = 0
+      let errorCount = 0
+
+      for (const templateId of selectedTemplates) {
+        try {
+          const response = await fetch(`/api/templates?id=${templateId}`, {
+            method: 'DELETE'
+          })
+
+          const result = await response.json()
+
+          if (result.success) {
+            successCount++
+          } else {
+            errorCount++
+          }
+        } catch (error) {
+          errorCount++
+          console.error('Error deleting template:', templateId, error)
+        }
+      }
+
+      // Refresh templates list
+      await loadTemplates()
+
+      setSelectedTemplates([])
+      setBulkMode(false)
+
+      alert(`Deleted ${successCount} templates successfully!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`)
+
+    } catch (error) {
+      console.error('Error in bulk delete:', error)
+      alert('Error deleting templates. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleBulkExport = async () => {
+    if (selectedTemplates.length === 0) return
+
+    try {
+      const selectedTemplateData = displayTemplates.filter(t => selectedTemplates.includes(t.id))
+
+      const dataStr = JSON.stringify(selectedTemplateData, null, 2)
+      const dataBlob = new Blob([dataStr], { type: 'application/json' })
+
+      const url = URL.createObjectURL(dataBlob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `selected-templates-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      alert(`Exported ${selectedTemplates.length} templates successfully!`)
+    } catch (error) {
+      console.error('Error exporting selected templates:', error)
+      alert('Error exporting templates. Please try again.')
+    }
   }
 
   const handleEditTemplate = async () => {
@@ -368,44 +524,48 @@ function TemplateManagementComponent() {
     try {
       setLoading(true)
 
-      // Create updated template object
-      const updatedTemplate = {
-        ...selectedTemplate,
-        ...formData,
+      // Create updated template data
+      const updateData = {
+        id: selectedTemplate.id,
+        name: formData.name.trim(),
+        category: formData.category.trim(),
+        type: formData.type,
+        content: formData.content.trim(),
         variables: extractVariables(formData.content),
-        updatedAt: new Date().toISOString()
+        language: formData.language,
+        status: selectedTemplate.status,
+        tags: formData.tags,
+        mediaUrl: formData.mediaUrl || null,
+        mediaType: formData.mediaType || null,
+        mediaCaption: formData.mediaCaption || null
       }
 
-      // Try API first
-      try {
-        const response = await fetch(`/api/templates/${selectedTemplate.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedTemplate)
-        })
+      console.log('Updating template via API:', updateData)
 
-        const data = await response.json()
-        if (data.success) {
-          console.log('✅ Template updated via API successfully')
-        }
-      } catch (apiError) {
-        console.warn('⚠️ API update failed, using localStorage:', apiError)
+      // Update via API
+      const response = await fetch('/api/templates', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData)
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update template')
       }
 
-      // Always update localStorage as backup
-      const { LocalStorage } = await import('@/lib/local-storage')
-      LocalStorage.updateTemplate(selectedTemplate.id, updatedTemplate)
+      console.log('✅ Template updated successfully:', result.template)
 
-      // Update local state immediately
-      setLocalTemplates(prev =>
-        prev.map(t => t.id === selectedTemplate.id ? updatedTemplate : t)
-      )
+      // Refresh templates list
+      await loadTemplates()
 
       setShowEditModal(false)
       setSelectedTemplate(null)
       resetForm()
 
-      console.log('✅ Template updated successfully')
       alert('Template updated successfully!')
 
     } catch (error) {
@@ -416,34 +576,76 @@ function TemplateManagementComponent() {
     }
   }
 
+  // Quick status update
+  const handleStatusUpdate = async (templateId: string, newStatus: Template['status']) => {
+    try {
+      const template = displayTemplates.find(t => t.id === templateId)
+      if (!template) return
+
+      const updateData = {
+        id: templateId,
+        name: template.name,
+        category: template.category,
+        type: template.type,
+        content: template.content,
+        variables: template.variables,
+        language: template.language,
+        status: newStatus,
+        tags: template.tags,
+        mediaUrl: template.mediaUrl,
+        mediaType: template.mediaType,
+        mediaCaption: template.mediaCaption
+      }
+
+      const response = await fetch('/api/templates', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        await loadTemplates()
+        console.log(`✅ Template status updated to ${newStatus}`)
+      } else {
+        throw new Error(result.error || 'Failed to update status')
+      }
+    } catch (error) {
+      console.error('Error updating template status:', error)
+      alert('Error updating template status. Please try again.')
+    }
+  }
+
+  // Alias for edit modal
+  const handleUpdateTemplate = handleEditTemplate
+
   const handleDeleteTemplate = async (templateId: string) => {
     if (!confirm('Are you sure you want to delete this template?')) return
 
     try {
       setLoading(true)
 
-      // Try API first
-      try {
-        const response = await fetch(`/api/templates/${templateId}`, {
-          method: 'DELETE'
-        })
+      console.log('🗑️ Deleting template:', templateId)
 
-        const data = await response.json()
-        if (data.success) {
-          console.log('✅ Template deleted from API successfully')
-        }
-      } catch (apiError) {
-        console.warn('⚠️ API delete failed, using localStorage:', apiError)
+      // Delete via API
+      const response = await fetch(`/api/templates?id=${templateId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete template')
       }
 
-      // Always update localStorage as backup
-      const { LocalStorage } = await import('@/lib/local-storage')
-      LocalStorage.deleteTemplate(templateId)
-
-      // Update local state immediately
-      setLocalTemplates(prev => prev.filter(t => t.id !== templateId))
-
       console.log('✅ Template deleted successfully')
+
+      // Refresh templates list
+      await loadTemplates()
+
       alert('Template deleted successfully!')
 
     } catch (error) {
@@ -458,30 +660,47 @@ function TemplateManagementComponent() {
     try {
       setLoading(true)
 
-      const duplicatedTemplate: Template = {
-        ...template,
-        id: `template_${Date.now()}`,
+      const duplicateData = {
         name: `${template.name} (Copy)`,
+        category: template.category,
+        type: template.type,
+        content: template.content,
+        variables: template.variables,
+        language: template.language,
         status: 'draft',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        usageCount: 0
+        tags: template.tags,
+        mediaUrl: template.mediaUrl || null,
+        mediaType: template.mediaType || null,
+        mediaCaption: template.mediaCaption || null
       }
 
-      // Save to localStorage
-      const { LocalStorage } = await import('@/lib/local-storage')
-      LocalStorage.createTemplate(duplicatedTemplate)
+      console.log('Duplicating template via API:', duplicateData)
 
-      // Get updated templates
-      const updatedTemplates = LocalStorage.getTemplates()
+      // Create via API
+      const response = await fetch('/api/templates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(duplicateData)
+      })
 
-      // Update local state
-      setLocalTemplates(updatedTemplates)
+      const result = await response.json()
 
-      console.log('✅ Template duplicated successfully:', duplicatedTemplate.name)
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to duplicate template')
+      }
+
+      console.log('✅ Template duplicated successfully:', result.template)
+
+      // Refresh templates list
+      await loadTemplates()
+
+      alert('Template duplicated successfully!')
 
     } catch (error) {
       console.error('Error duplicating template:', error)
+      alert('Error duplicating template. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -526,12 +745,26 @@ function TemplateManagementComponent() {
 
   // File upload handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('🔄 File upload triggered', event)
     const file = event.target.files?.[0]
-    if (!file) return
+    console.log('📁 Selected file:', file)
+
+    if (!file) {
+      console.log('❌ No file selected')
+      return
+    }
+
+    console.log('📊 File details:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified
+    })
 
     // Validate file size (max 16MB for WhatsApp)
     const maxSize = 16 * 1024 * 1024 // 16MB
     if (file.size > maxSize) {
+      console.log('❌ File too large:', file.size, 'bytes')
       alert('File size must be less than 16MB')
       return
     }
@@ -548,18 +781,25 @@ function TemplateManagementComponent() {
       mediaType = 'document'
     }
 
+    console.log('🎯 Determined media type:', mediaType)
+
     // Create object URL for preview
     const mediaUrl = URL.createObjectURL(file)
+    console.log('🔗 Created media URL:', mediaUrl)
 
     setSelectedFile(file)
-    setFormData(prev => ({
-      ...prev,
-      mediaUrl,
-      mediaType,
-      mediaFilename: file.name,
-      mediaSize: file.size,
-      type: mediaType === 'audio' ? 'document' : mediaType
-    }))
+    setFormData(prev => {
+      const newFormData = {
+        ...prev,
+        mediaUrl,
+        mediaType,
+        mediaFilename: file.name,
+        mediaSize: file.size,
+        type: mediaType === 'audio' ? 'document' : mediaType
+      }
+      console.log('✅ Updated form data:', newFormData)
+      return newFormData
+    })
   }
 
   // Remove media file
@@ -630,27 +870,70 @@ function TemplateManagementComponent() {
         </div>
         
         <div className="flex space-x-3">
-          <Button
-            variant="outline"
-            icon={<Upload size={16} />}
-            onClick={handleImportTemplates}
-          >
-            Import
-          </Button>
-          <Button
-            variant="outline"
-            icon={<Download size={16} />}
-            onClick={handleExportTemplates}
-          >
-            Export
-          </Button>
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            icon={<Plus size={16} />}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Create Template
-          </Button>
+          {!bulkMode ? (
+            <>
+              <Button
+                variant="outline"
+                icon={<Upload size={16} />}
+                onClick={handleImportTemplates}
+                disabled={loading}
+              >
+                Import
+              </Button>
+              <Button
+                variant="outline"
+                icon={<Download size={16} />}
+                onClick={handleExportTemplates}
+                disabled={loading}
+              >
+                Export
+              </Button>
+              <Button
+                variant="outline"
+                onClick={toggleBulkMode}
+                disabled={displayTemplates.length === 0}
+              >
+                Select Multiple
+              </Button>
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                icon={<Plus size={16} />}
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={loading}
+              >
+                Create Template
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="text-sm text-gray-600 flex items-center">
+                {selectedTemplates.length} selected
+              </span>
+              <Button
+                variant="outline"
+                onClick={handleBulkExport}
+                disabled={selectedTemplates.length === 0 || loading}
+                icon={<Download size={16} />}
+              >
+                Export Selected
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleBulkDelete}
+                disabled={selectedTemplates.length === 0 || loading}
+                className="text-red-600 border-red-300 hover:bg-red-50"
+                icon={<Trash2 size={16} />}
+              >
+                Delete Selected
+              </Button>
+              <Button
+                variant="outline"
+                onClick={toggleBulkMode}
+              >
+                Cancel
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -705,16 +988,45 @@ function TemplateManagementComponent() {
 
       {/* Filters */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        {bulkMode && filteredTemplates.length > 0 && (
+          <div className="flex items-center justify-between mb-4 pb-4 border-b">
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                checked={selectedTemplates.length === filteredTemplates.length && filteredTemplates.length > 0}
+                onChange={selectAllTemplates}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label className="text-sm font-medium text-gray-700">
+                Select All ({filteredTemplates.length})
+              </label>
+            </div>
+            <div className="text-sm text-gray-600">
+              {selectedTemplates.length} of {filteredTemplates.length} selected
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search templates..."
+              placeholder="Search by name, content, or tags..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           
           <select
@@ -751,12 +1063,45 @@ function TemplateManagementComponent() {
             <option value="draft">Draft</option>
           </select>
         </div>
+
+        {/* Filter Actions */}
+        {(searchTerm || selectedCategory !== 'all' || selectedType !== 'all' || selectedStatus !== 'all') && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t">
+            <p className="text-sm text-gray-600">
+              Showing {filteredTemplates.length} of {displayTemplates.length} templates
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchTerm('')
+                setSelectedCategory('all')
+                setSelectedType('all')
+                setSelectedStatus('all')
+              }}
+              className="text-gray-600"
+            >
+              Clear Filters
+            </Button>
+          </div>
+        )}
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center py-12">
+          <div className="inline-flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="text-gray-600">Loading templates...</span>
+          </div>
+        </div>
+      )}
+
       {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <AnimatePresence>
-          {filteredTemplates.map((template) => {
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence>
+            {filteredTemplates.map((template) => {
             const TypeIcon = getTypeIcon(template.type)
             
             return (
@@ -770,6 +1115,14 @@ function TemplateManagementComponent() {
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center space-x-3">
+                      {bulkMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedTemplates.includes(template.id)}
+                          onChange={() => toggleTemplateSelection(template.id)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      )}
                       <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                         <TypeIcon className="w-5 h-5 text-blue-600" />
                       </div>
@@ -778,12 +1131,54 @@ function TemplateManagementComponent() {
                         <p className="text-sm text-gray-500">{template.category}</p>
                       </div>
                     </div>
-                    
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(template.status)}`}>
-                      {template.status}
-                    </span>
+
+                    {!bulkMode ? (
+                      <select
+                        value={template.status}
+                        onChange={(e) => handleStatusUpdate(template.id, e.target.value as Template['status'])}
+                        className={`px-2 py-1 rounded-full text-xs font-medium border-0 focus:ring-2 focus:ring-blue-500 ${getStatusColor(template.status)}`}
+                        style={{ backgroundColor: 'transparent' }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="pending">Pending</option>
+                        <option value="draft">Draft</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    ) : (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(template.status)}`}>
+                        {template.status}
+                      </span>
+                    )}
                   </div>
                   
+                  {/* Media Preview */}
+                  {template.mediaUrl && (
+                    <div className="mb-3">
+                      {template.mediaType === 'image' && (
+                        <img
+                          src={template.mediaUrl}
+                          alt="Template media"
+                          className="w-full h-32 object-cover rounded-lg"
+                        />
+                      )}
+                      {template.mediaType === 'video' && (
+                        <video
+                          src={template.mediaUrl}
+                          className="w-full h-32 object-cover rounded-lg"
+                          controls={false}
+                        />
+                      )}
+                      {(template.mediaType === 'document' || template.mediaType === 'audio') && (
+                        <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                          <File className="w-6 h-6 text-gray-600" />
+                          <span className="text-sm text-gray-700 truncate">
+                            {template.mediaCaption || 'Document attached'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <p className="text-gray-600 text-sm mb-4 line-clamp-3">
                     {template.content}
                   </p>
@@ -813,37 +1208,39 @@ function TemplateManagementComponent() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedTemplate(template)
-                          setShowPreviewModal(true)
-                        }}
-                        icon={<Eye size={14} />}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditModal(template)}
-                        icon={<Edit3 size={14} />}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDuplicateTemplate(template)}
-                        icon={<Copy size={14} />}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteTemplate(template.id)}
-                        icon={<Trash2 size={14} />}
-                        className="text-red-600 hover:text-red-700"
-                      />
-                    </div>
-                    
+                    {!bulkMode && (
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTemplate(template)
+                            setShowPreviewModal(true)
+                          }}
+                          icon={<Eye size={14} />}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditModal(template)}
+                          icon={<Edit3 size={14} />}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDuplicateTemplate(template)}
+                          icon={<Copy size={14} />}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTemplate(template.id)}
+                          icon={<Trash2 size={14} />}
+                          className="text-red-600 hover:text-red-700"
+                        />
+                      </div>
+                    )}
+
                     <span className="text-xs text-gray-400">
                       {new Date(template.updatedAt).toLocaleDateString()}
                     </span>
@@ -851,9 +1248,10 @@ function TemplateManagementComponent() {
                 </div>
               </motion.div>
             )
-          })}
-        </AnimatePresence>
-      </div>
+            })}
+          </AnimatePresence>
+        </div>
+      )}
 
       {filteredTemplates.length === 0 && !loading && (
         <div className="text-center py-12">
@@ -945,15 +1343,35 @@ function TemplateManagementComponent() {
                       </label>
                       <select
                         value={formData.type}
-                        onChange={(e) => setFormData({ ...formData, type: e.target.value as Template['type'] })}
+                        onChange={(e) => {
+                          const newType = e.target.value as Template['type']
+                          // Clear media data when switching to text type
+                          if (newType === 'text') {
+                            if (formData.mediaUrl && formData.mediaUrl.startsWith('blob:')) {
+                              URL.revokeObjectURL(formData.mediaUrl)
+                            }
+                            setSelectedFile(null)
+                            setFormData({
+                              ...formData,
+                              type: newType,
+                              mediaUrl: '',
+                              mediaType: undefined,
+                              mediaCaption: '',
+                              mediaFilename: '',
+                              mediaSize: 0
+                            })
+                          } else {
+                            setFormData({ ...formData, type: newType })
+                          }
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         required
                       >
-                        <option value="text">Text</option>
-                        <option value="image">Image</option>
-                        <option value="video">Video</option>
-                        <option value="document">Document</option>
-                        <option value="interactive">Interactive</option>
+                        <option value="text">📝 Text Only</option>
+                        <option value="image">🖼️ Image + Text</option>
+                        <option value="video">🎥 Video + Text</option>
+                        <option value="document">📄 Document + Text</option>
+                        <option value="interactive">⚡ Interactive</option>
                       </select>
                     </div>
 
@@ -978,22 +1396,528 @@ function TemplateManagementComponent() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Template Content *
                     </label>
-                    <textarea
-                      value={formData.content}
-                      onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      rows={6}
-                      placeholder="Enter your template content here..."
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Use {'{'}{'{'} variable {'}'}{'}'}  for dynamic content (e.g., {'{'}{'{'} name {'}'}{'}'},  {'{'}{'{'} company {'}'}{'}'})
-                    </p>
+                    <div className="relative">
+                      <textarea
+                        value={formData.content}
+                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        rows={6}
+                        placeholder="Enter your template content here..."
+                        required
+                      />
+                      <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                        {formData.content.length}/1024
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2 mt-2">
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-500">
+                          Use {'{'}{'{'} variable {'}'}{'}'}  for dynamic content (e.g., {'{'}{'{'} name {'}'}{'}'},  {'{'}{'{'} company {'}'}{'}'})
+                        </p>
+                        {extractVariables(formData.content).length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-700 mb-1">Detected Variables:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {extractVariables(formData.content).map((variable, index) => (
+                                <span
+                                  key={index}
+                                  className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs"
+                                >
+                                  {variable}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Media Upload Section */}
                   {(formData.type === 'image' || formData.type === 'video' || formData.type === 'document') && (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-blue-800 mb-3">
+                        📎 Media Attachment ({formData.type})
+                      </label>
+                      <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 hover:border-blue-400 transition-colors bg-white">
+                        <div className="text-center">
+                          <Upload className="mx-auto h-12 w-12 text-blue-400 mb-4" />
+                          <div className="text-sm text-gray-600 mb-4">
+                            <label htmlFor="media-upload" className="cursor-pointer">
+                              <span className="font-medium text-blue-600 hover:text-blue-500 text-lg">
+                                Click to upload {formData.type}
+                              </span>
+                              <p className="text-gray-500 mt-2">or drag and drop your file here</p>
+                            </label>
+                            <input
+                              id="media-upload"
+                              type="file"
+                              className="hidden"
+                              accept={
+                                formData.type === 'image' ? 'image/*' :
+                                formData.type === 'video' ? 'video/*' :
+                                formData.type === 'document' ? '.pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx' :
+                                '*/*'
+                              }
+                              onChange={handleFileUpload}
+                            />
+                          </div>
+                          <p className="text-xs text-blue-600 font-medium">
+                            {formData.type === 'image' && '🖼️ Supported: PNG, JPG, GIF • Max size: 16MB'}
+                            {formData.type === 'video' && '🎥 Supported: MP4, AVI, MOV • Max size: 16MB'}
+                            {formData.type === 'document' && '📄 Supported: PDF, DOC, XLS, PPT • Max size: 16MB'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Media Preview Section */}
+                  {formData.mediaUrl && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-green-800 mb-3">
+                        ✅ Media Preview
+                      </label>
+                      <div className="bg-white rounded-lg p-4 border border-green-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm font-medium text-gray-700">
+                              {formData.mediaFilename}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              ({(formData.mediaSize / 1024 / 1024).toFixed(2)} MB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={removeMediaFile}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        {/* Media Preview */}
+                        <div className="flex justify-center">
+                          {formData.mediaType === 'image' && (
+                            <img
+                              src={formData.mediaUrl}
+                              alt="Preview"
+                              className="max-w-xs max-h-48 rounded-lg shadow-md"
+                            />
+                          )}
+                          {formData.mediaType === 'video' && (
+                            <video
+                              src={formData.mediaUrl}
+                              controls
+                              className="max-w-xs max-h-48 rounded-lg shadow-md"
+                            />
+                          )}
+                          {(formData.mediaType === 'document' || formData.mediaType === 'audio') && (
+                            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
+                              <File className="w-8 h-8 text-gray-600" />
+                              <div>
+                                <p className="font-medium text-gray-900">{formData.mediaFilename}</p>
+                                <p className="text-sm text-gray-500">
+                                  {formData.mediaType} • {(formData.mediaSize / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Tags (comma separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.tags.join(', ')}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="marketing, promotion, welcome"
+                    />
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-4 border-t">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowCreateModal(false)}
+                      disabled={loading}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={loading}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {loading ? 'Creating...' : 'Create Template'}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Preview Modal */}
+      <AnimatePresence>
+        {showPreviewModal && selectedTemplate && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowPreviewModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">Template Preview</h2>
+                  <button
+                    onClick={() => setShowPreviewModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Template Info */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Name</p>
+                        <p className="text-gray-900">{selectedTemplate.name}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Category</p>
+                        <p className="text-gray-900">{selectedTemplate.category}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Type</p>
+                        <p className="text-gray-900 capitalize">{selectedTemplate.type}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Status</p>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedTemplate.status)}`}>
+                          {selectedTemplate.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Media Preview */}
+                  {selectedTemplate.mediaUrl && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Media</h3>
+                      <div className="border rounded-lg p-4">
+                        {selectedTemplate.mediaType === 'image' && (
+                          <img
+                            src={selectedTemplate.mediaUrl}
+                            alt="Template media"
+                            className="w-full max-h-64 object-contain rounded-lg"
+                          />
+                        )}
+                        {selectedTemplate.mediaType === 'video' && (
+                          <video
+                            src={selectedTemplate.mediaUrl}
+                            controls
+                            className="w-full max-h-64 rounded-lg"
+                          />
+                        )}
+                        {(selectedTemplate.mediaType === 'document' || selectedTemplate.mediaType === 'audio') && (
+                          <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
+                            <File className="w-8 h-8 text-gray-600" />
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {selectedTemplate.mediaCaption || 'Document'}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {selectedTemplate.mediaType} file
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {selectedTemplate.mediaCaption && (
+                          <p className="text-sm text-gray-600 mt-2">{selectedTemplate.mediaCaption}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Content Preview */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Content</h3>
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <p className="text-gray-900 whitespace-pre-wrap">{selectedTemplate.content}</p>
+                    </div>
+                  </div>
+
+                  {/* Variables */}
+                  {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Variables</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTemplate.variables.map((variable, index) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                          >
+                            {variable}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {selectedTemplate.tags && selectedTemplate.tags.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Tags</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTemplate.tags.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex space-x-3 pt-4 border-t">
+                    <Button
+                      onClick={() => {
+                        setShowPreviewModal(false)
+                        openEditModal(selectedTemplate)
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      icon={<Edit3 size={16} />}
+                    >
+                      Edit Template
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        handleDuplicateTemplate(selectedTemplate)
+                        setShowPreviewModal(false)
+                      }}
+                      variant="outline"
+                      icon={<Copy size={16} />}
+                    >
+                      Duplicate
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {showEditModal && selectedTemplate && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowEditModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">Edit Template</h2>
+                  <button
+                    onClick={() => setShowEditModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <form onSubmit={(e) => { e.preventDefault(); handleUpdateTemplate(); }} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Template Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter template name"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Category *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.category}
+                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., Marketing, Support"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Type *
+                      </label>
+                      <select
+                        value={formData.type}
+                        onChange={(e) => {
+                          const newType = e.target.value as Template['type']
+                          // Clear media data when switching to text type
+                          if (newType === 'text') {
+                            if (formData.mediaUrl && formData.mediaUrl.startsWith('blob:')) {
+                              URL.revokeObjectURL(formData.mediaUrl)
+                            }
+                            setSelectedFile(null)
+                            setFormData({
+                              ...formData,
+                              type: newType,
+                              mediaUrl: '',
+                              mediaType: undefined,
+                              mediaCaption: '',
+                              mediaFilename: '',
+                              mediaSize: 0
+                            })
+                          } else {
+                            setFormData({ ...formData, type: newType })
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      >
+                        <option value="text">📝 Text Only</option>
+                        <option value="image">🖼️ Image + Text</option>
+                        <option value="video">🎥 Video + Text</option>
+                        <option value="document">📄 Document + Text</option>
+                        <option value="interactive">⚡ Interactive</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Language
+                      </label>
+                      <select
+                        value={formData.language}
+                        onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="en">English</option>
+                        <option value="hi">Hindi</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template Content *
+                    </label>
+                    <div className="relative">
+                      <textarea
+                        value={formData.content}
+                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        rows={6}
+                        placeholder="Enter your template content here..."
+                        required
+                      />
+                      <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                        {formData.content.length}/1024
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2 mt-2">
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-500">
+                          Use {'{'}{'{'} variable {'}'}{'}'}  for dynamic content (e.g., {'{'}{'{'} name {'}'}{'}'},  {'{'}{'{'} company {'}'}{'}'})
+                        </p>
+                        {extractVariables(formData.content).length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-700 mb-1">Detected Variables:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {extractVariables(formData.content).map((variable, index) => (
+                                <span
+                                  key={index}
+                                  className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs"
+                                >
+                                  {variable}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Media Upload Section for Edit */}
+                  {(formData.type === 'image' || formData.type === 'video' || formData.type === 'document') && (
+                    <div
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-400 transition-colors"
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        e.currentTarget.classList.add('border-blue-400', 'bg-blue-50')
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault()
+                        e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50')
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50')
+                        const files = e.dataTransfer.files
+                        if (files.length > 0) {
+                          const file = files[0]
+                          const fakeEvent = {
+                            target: { files: [file] }
+                          } as any
+                          handleFileUpload(fakeEvent)
+                        }
+                      }}
+                    >
                       <div className="text-center">
                         {formData.mediaUrl ? (
                           <div className="space-y-4">
@@ -1051,17 +1975,21 @@ function TemplateManagementComponent() {
                             </Button>
                           </div>
                         ) : (
-                          <div>
-                            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                            <div className="text-sm text-gray-600 mb-4">
-                              <label htmlFor="media-upload" className="cursor-pointer">
-                                <span className="font-medium text-blue-600 hover:text-blue-500">
-                                  Click to upload
+                          <div className="py-8">
+                            <div className="flex justify-center mb-4">
+                              {formData.type === 'image' && <Image className="h-16 w-16 text-gray-400" />}
+                              {formData.type === 'video' && <Video className="h-16 w-16 text-gray-400" />}
+                              {formData.type === 'document' && <File className="h-16 w-16 text-gray-400" />}
+                            </div>
+                            <div className="text-center">
+                              <label htmlFor="media-upload-edit" className="cursor-pointer">
+                                <span className="text-lg font-medium text-blue-600 hover:text-blue-500">
+                                  Click to upload {formData.type}
                                 </span>
-                                {' '}or drag and drop
+                                <p className="text-gray-500 mt-2">or drag and drop your file here</p>
                               </label>
                               <input
-                                id="media-upload"
+                                id="media-upload-edit"
                                 type="file"
                                 className="hidden"
                                 accept={
@@ -1073,11 +2001,13 @@ function TemplateManagementComponent() {
                                 onChange={handleFileUpload}
                               />
                             </div>
-                            <p className="text-xs text-gray-500">
-                              {formData.type === 'image' && 'PNG, JPG, GIF up to 16MB'}
-                              {formData.type === 'video' && 'MP4, AVI, MOV up to 16MB'}
-                              {formData.type === 'document' && 'PDF, DOC, XLS, PPT up to 16MB'}
-                            </p>
+                            <div className="mt-4 text-center">
+                              <p className="text-xs text-gray-500">
+                                {formData.type === 'image' && 'Supported: PNG, JPG, GIF • Max size: 16MB'}
+                                {formData.type === 'video' && 'Supported: MP4, AVI, MOV • Max size: 16MB'}
+                                {formData.type === 'document' && 'Supported: PDF, DOC, XLS, PPT • Max size: 16MB'}
+                              </p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1100,12 +2030,11 @@ function TemplateManagementComponent() {
                     />
                   </div>
 
-                  <div className="flex justify-end space-x-3 pt-4 border-t">
+                  <div className="flex justify-end space-x-3 pt-6 border-t">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setShowCreateModal(false)}
-                      disabled={loading}
+                      onClick={() => setShowEditModal(false)}
                     >
                       Cancel
                     </Button>
@@ -1114,7 +2043,7 @@ function TemplateManagementComponent() {
                       disabled={loading}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
-                      {loading ? 'Creating...' : 'Create Template'}
+                      {loading ? 'Updating...' : 'Update Template'}
                     </Button>
                   </div>
                 </form>

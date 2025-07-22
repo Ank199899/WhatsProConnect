@@ -1,22 +1,16 @@
 /**
- * 🚀 CENTRALIZED PORT CONFIGURATION
- * 
- * ⚠️  IMPORTANT: DO NOT CHANGE THESE PORTS!
- * All services are configured to use these specific ports.
- * Changing them will break the application.
+ * 🎯 AUTO-LOADED FROM MASTER CONFIG
+ *
+ * ⚠️  CHANGE ONLY IN master-config.js!
  */
 
+// Load from master config
+const MASTER_CONFIG = require('../master-config.js')
+
 const PORTS = {
-  // Frontend (Next.js Application)
-  FRONTEND: 3005,
-  
-  // Backend (WhatsApp Server)
-  BACKEND: 3001,
-  
-  // Development Database (if needed)
+  FRONTEND: MASTER_CONFIG.INTERNAL_PORTS.FRONTEND,
+  BACKEND: MASTER_CONFIG.INTERNAL_PORTS.BACKEND,
   DATABASE: 5432,
-  
-  // Redis (if needed)
   REDIS: 6379
 }
 

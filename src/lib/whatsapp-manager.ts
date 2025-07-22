@@ -63,21 +63,28 @@ export class WhatsAppManagerClient {
   private messageListeners: Array<(data: any) => void> = []
   private authFailureListeners: Array<(data: any) => void> = []
   private connectionStatusListeners: Array<(isConnected: boolean) => void> = []
+  private chatSyncListeners: Array<(data: any) => void> = []
+  private clientReadyListeners: Array<(data: any) => void> = []
+  private conversationUpdateListeners: Array<(data: any) => void> = []
+  private contactUpdateListeners: Array<(data: any) => void> = []
+  private presenceUpdateListeners: Array<(data: any) => void> = []
+  private typingStatusListeners: Array<(data: any) => void> = []
+  private cachedMessages: any[] = []
 
   constructor(baseUrl?: string) {
-    // FIXED PORT CONFIGURATION - Backend always on 3001
+    // FIXED PORT CONFIGURATION - Backend always on 3006
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
       const protocol = window.location.protocol
 
-      // FIXED: Always use port 3001 for WhatsApp backend
+      // FIXED: Always use port 3006 for WhatsApp backend
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        this.baseUrl = baseUrl || 'http://localhost:3001'
+        this.baseUrl = baseUrl || 'http://localhost:3006'
       } else {
-        this.baseUrl = baseUrl || `${protocol}//${hostname}:3001`
+        this.baseUrl = baseUrl || `${protocol}//${hostname}:3006`
       }
     } else {
-      this.baseUrl = baseUrl || 'http://localhost:3001'
+      this.baseUrl = baseUrl || 'http://localhost:3006'
     }
 
     console.log('🔧 WhatsApp Manager initialized with FIXED URL:', this.baseUrl)
@@ -85,17 +92,19 @@ export class WhatsAppManagerClient {
 
   // Initialize socket connection
   initializeSocket() {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !this.socket) {
       console.log('🔌 Initializing socket connection to:', this.baseUrl)
       const io = require('socket.io-client')
       this.socket = io(this.baseUrl, {
         transports: ['websocket', 'polling'],
         timeout: 20000,
-        forceNew: true
+        forceNew: true,
+        autoConnect: true
       })
 
       this.socket.on('connect', () => {
         console.log('✅ Connected to WhatsApp server')
+        console.log('🔌 Socket ID:', this.socket.id)
       })
 
       this.socket.on('disconnect', () => {
@@ -105,6 +114,12 @@ export class WhatsAppManagerClient {
       this.socket.on('connect_error', (error: any) => {
         console.error('🔥 Socket connection error:', error)
       })
+
+      // Force connection
+      if (!this.socket.connected) {
+        console.log('🔄 Forcing socket connection...')
+        this.socket.connect()
+      }
 
       // Setup event listeners
       this.setupEventListeners()
@@ -132,6 +147,69 @@ export class WhatsAppManagerClient {
     this.socket.on('disconnected', (data: { sessionId: string }) => {
       console.log('Client disconnected:', data)
       this.disconnectedListeners.forEach(listener => listener(data))
+    })
+
+    // New message event
+    this.socket.on('new_message', (data: any) => {
+      console.log('📨 New message received:', data)
+      this.messageListeners.forEach(listener => listener(data))
+    })
+
+    // Messages updated event
+    this.socket.on('messages_updated', (data: any[]) => {
+      console.log('📨 Messages updated:', data.length, 'messages')
+      // Store messages for later retrieval
+      this.cachedMessages = data
+    })
+
+    // Chat sync completion event
+    this.socket.on('chats_synced', (data: any) => {
+      console.log('🔄 Chats synced:', data)
+      // Clear cache to force reload
+      this.cachedMessages = []
+      this.chatSyncListeners.forEach(listener => listener(data))
+    })
+
+    // Client ready event
+    this.socket.on('client_ready', (data: any) => {
+      console.log('✅ WhatsApp client ready:', data)
+      this.clientReadyListeners.forEach(listener => listener(data))
+    })
+
+    // Test message event
+    this.socket.on('test_message', (data: any) => {
+      console.log('🧪 Test message received:', data)
+      this.messageListeners.forEach(listener => listener(data))
+    })
+
+    // Conversations updated event
+    this.socket.on('conversations_updated', (data: any) => {
+      console.log('💬 Conversations updated:', data)
+      this.conversationUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Contacts updated event
+    this.socket.on('contacts_updated', (data: any) => {
+      console.log('👤 Contacts updated:', data)
+      this.contactUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Contact profile updated event
+    this.socket.on('contact_profile_updated', (data: any) => {
+      console.log('👤 Contact profile updated:', data)
+      this.contactUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Presence update event
+    this.socket.on('presence_update', (data: any) => {
+      console.log('👁️ Presence update:', data)
+      this.presenceUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Typing status event
+    this.socket.on('typing_status', (data: any) => {
+      console.log('⌨️ Typing status:', data)
+      this.typingStatusListeners.forEach(listener => listener(data))
     })
   }
 
@@ -164,18 +242,9 @@ export class WhatsAppManagerClient {
       }
 
       const data = await response.json()
-      console.log('Session created:', data)
 
-      // Save to local storage
+      // Setup real-time listeners for this session
       if (data.success) {
-        LocalStorage.createSession({
-          name: data.sessionName,
-          status: 'initializing',
-          is_active: true,
-          id: data.sessionId
-        })
-
-        // Setup real-time listeners for this session
         this.setupSessionListeners(data.sessionId)
       }
 
@@ -199,17 +268,6 @@ export class WhatsAppManagerClient {
     // Listen for QR code events
     this.socket?.on('qr_code', (data: { sessionId: string; qrCode: string }) => {
       if (data.sessionId === sessionId) {
-        console.log('QR Code received for session:', sessionId)
-
-        // Update local storage with QR code
-        const sessions = LocalStorage.getSessions()
-        const sessionIndex = sessions.findIndex(s => s.id === sessionId)
-        if (sessionIndex !== -1) {
-          sessions[sessionIndex].qrCode = data.qrCode
-          sessions[sessionIndex].status = 'qr_code'
-          LocalStorage.updateSession(sessionId, sessions[sessionIndex])
-        }
-
         // Emit to listeners
         this.qrCodeListeners.forEach(listener => listener(data))
       }
@@ -218,18 +276,6 @@ export class WhatsAppManagerClient {
     // Listen for client ready events
     this.socket?.on('client_ready', (data: { sessionId: string; phoneNumber: string }) => {
       if (data.sessionId === sessionId) {
-        console.log('Client ready for session:', sessionId)
-
-        // Update local storage
-        const sessions = LocalStorage.getSessions()
-        const sessionIndex = sessions.findIndex(s => s.id === sessionId)
-        if (sessionIndex !== -1) {
-          sessions[sessionIndex].status = 'ready'
-          sessions[sessionIndex].phone_number = data.phoneNumber
-          sessions[sessionIndex].qrCode = undefined
-          LocalStorage.updateSession(sessionId, sessions[sessionIndex])
-        }
-
         // Emit to listeners
         this.readyListeners.forEach(listener => listener(data))
       }
@@ -238,17 +284,6 @@ export class WhatsAppManagerClient {
     // Listen for disconnection events
     this.socket?.on('disconnected', (data: { sessionId: string }) => {
       if (data.sessionId === sessionId) {
-        console.log('Client disconnected for session:', sessionId)
-
-        // Update local storage
-        const sessions = LocalStorage.getSessions()
-        const sessionIndex = sessions.findIndex(s => s.id === sessionId)
-        if (sessionIndex !== -1) {
-          sessions[sessionIndex].status = 'disconnected'
-          sessions[sessionIndex].is_active = false
-          LocalStorage.updateSession(sessionId, sessions[sessionIndex])
-        }
-
         // Emit to listeners
         this.disconnectedListeners.forEach(listener => listener(data))
       }
@@ -257,68 +292,34 @@ export class WhatsAppManagerClient {
 
   async getSessions(): Promise<SessionStatus[]> {
     try {
-      // Get sessions from backend server
+      // Get sessions from backend server only - single source of truth
       const response = await fetch(`${this.baseUrl}/api/sessions`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const serverSessions = await response.json()
-      console.log('Server sessions:', serverSessions)
 
-      // Get local sessions for persistence
-      const localSessions = LocalStorage.getSessions()
-
-      // Cleanup duplicate sessions in local storage
-      LocalStorage.cleanupDuplicateSessions()
-
-      // Merge server and local data
-      const sessions: SessionStatus[] = serverSessions.map((session: any) => {
-        const localSession = localSessions.find(ls => ls.id === session.id)
-        const stats = LocalStorage.getSessionStats(session.id)
-
-        // Update local session if it exists, create if not
-        if (localSession) {
-          LocalStorage.updateSession(session.id, {
-            status: session.status,
-            phone_number: session.phoneNumber
-          })
-        } else {
-          LocalStorage.createSession({
-            id: session.id,
-            name: session.name,
-            status: session.status,
-            phone_number: session.phoneNumber,
-            is_active: true
-          })
+      // Map server sessions to our format
+      const sessions: SessionStatus[] = serverSessions.map((session: any) => ({
+        id: session.id,
+        name: session.name,
+        phoneNumber: session.phoneNumber,
+        status: session.status,
+        qrCode: session.qrCode,
+        createdAt: session.createdAt || session.updatedAt,
+        isActive: session.status === 'ready' || session.status === 'connected',
+        stats: {
+          totalMessages: 0,
+          totalContacts: 0,
+          lastActivity: session.updatedAt
         }
-
-        return {
-          id: session.id,
-          name: session.name,
-          phoneNumber: session.phoneNumber,
-          status: session.status,
-          qrCode: session.qrCode,
-          createdAt: session.createdAt,
-          isActive: true,
-          stats
-        }
-      })
+      }))
 
       return sessions
     } catch (error) {
-      console.error('Error getting sessions:', error)
-      // Return local sessions as fallback
-      const localSessions = LocalStorage.getSessions()
-      return localSessions.map(session => ({
-        id: session.id,
-        name: session.name,
-        phoneNumber: session.phone_number,
-        status: session.status,
-        createdAt: session.created_at,
-        isActive: session.is_active,
-        stats: LocalStorage.getSessionStats(session.id)
-      }))
+      console.error('❌ Error getting sessions:', error)
+      return []
     }
   }
 
@@ -410,7 +411,7 @@ export class WhatsAppManagerClient {
       console.error('❌ WhatsAppManager: Error sending message:', error)
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to send message'
+        message: (error && typeof error === 'object' && 'message' in error) ? (error as Error).message : 'Failed to send message'
       }
     }
   }
@@ -525,6 +526,52 @@ export class WhatsAppManagerClient {
       }
     } catch (error) {
       console.error('❌ WhatsAppManager: Error getting chat messages:', error)
+      return []
+    }
+  }
+
+  // Get all messages from database
+  async getAllMessages() {
+    try {
+      console.log('🔍 WhatsAppManager: Getting all messages from database')
+
+      // First try to get from cached messages
+      if (this.cachedMessages.length > 0) {
+        console.log(`📊 WhatsAppManager: Returning ${this.cachedMessages.length} cached messages`)
+        return this.cachedMessages
+      }
+
+      // Request messages from server via socket
+      if (this.socket) {
+        this.socket.emit('get_messages')
+
+        // Wait a bit for the response
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        if (this.cachedMessages.length > 0) {
+          return this.cachedMessages
+        }
+      }
+
+      // Fallback to API endpoint
+      const response = await fetch(`${this.baseUrl}/api/database/messages`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log(`📊 WhatsAppManager: API Response:`, data)
+
+      if (Array.isArray(data)) {
+        console.log(`📊 WhatsAppManager: Found ${data.length} messages from API`)
+        this.cachedMessages = data
+        return data
+      }
+
+      console.log('📊 WhatsAppManager: No messages found or invalid response')
+      return []
+    } catch (error) {
+      console.error('Error getting all messages:', error)
       return []
     }
   }
@@ -681,10 +728,90 @@ export class WhatsAppManagerClient {
     }
   }
 
+  // Message listener
+  onMessage(callback: (data: any) => void) {
+    this.messageListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('new_message', callback)
+      this.socket.on('test_message', callback)
+    }
+  }
+
+  // Remove message listener
+  offMessage(callback: (data: any) => void) {
+    const index = this.messageListeners.indexOf(callback)
+    if (index > -1) {
+      this.messageListeners.splice(index, 1)
+    }
+  }
+
+  // Conversation update listener
+  onConversationUpdate(callback: (data: any) => void) {
+    this.conversationUpdateListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('conversations_updated', callback)
+    }
+  }
+
+  // Contact update listener
+  onContactUpdate(callback: (data: any) => void) {
+    this.contactUpdateListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('contacts_updated', callback)
+    }
+  }
+
+  // Request real-time data
+  requestConversations(sessionId: string) {
+    if (this.socket) {
+      console.log(`📡 Requesting conversations for session: ${sessionId}`)
+      this.socket.emit('get_conversations', { sessionId })
+    }
+  }
+
+  requestContacts(sessionId: string) {
+    if (this.socket) {
+      console.log(`📡 Requesting contacts for session: ${sessionId}`)
+      this.socket.emit('get_contacts', { sessionId })
+    }
+  }
+
+  // Presence update listener
+  onPresenceUpdate(callback: (data: any) => void) {
+    this.presenceUpdateListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('presence_update', callback)
+    }
+  }
+
+  // Typing status listener
+  onTypingStatus(callback: (data: any) => void) {
+    this.typingStatusListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('typing_status', callback)
+    }
+  }
+
   // Message status update listener
   onMessageStatusUpdate(callback: (data: { messageId: string; status: 'sent' | 'delivered' | 'read' }) => void) {
     if (this.socket) {
       this.socket.on('message_status_update', callback)
+    }
+  }
+
+  // Chat sync listener
+  onChatSync(callback: (data: any) => void) {
+    this.chatSyncListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('chats_synced', callback)
+    }
+  }
+
+  // Client ready listener
+  onClientReady(callback: (data: any) => void) {
+    this.clientReadyListeners.push(callback)
+    if (this.socket) {
+      this.socket.on('client_ready', callback)
     }
   }
 

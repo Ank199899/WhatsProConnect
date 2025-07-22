@@ -19,12 +19,10 @@ import {
 import { motion } from 'framer-motion'
 import { io, Socket } from 'socket.io-client'
 
-// API Base URL configuration
+// API Base URL configuration - PRODUCTION FIXED PORTS
 const API_BASE_URL = typeof window !== 'undefined'
-  ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? 'http://localhost:3001'
-    : `${window.location.protocol}//${window.location.hostname}:3001`
-  : 'http://localhost:3001'
+  ? `${window.location.protocol}//${window.location.hostname}:3006`
+  : 'http://192.168.1.230:3006'
 
 interface WhatsAppSession {
   id: string
@@ -47,69 +45,41 @@ export default function WhatsAppNumbers() {
   const [qrImage, setQrImage] = useState('')
   const [socket, setSocket] = useState<Socket | null>(null)
 
-  // Load real WhatsApp sessions from database (primary source)
+  // Load real WhatsApp sessions from backend only (single source of truth)
   const loadSessions = async () => {
     try {
-      console.log('📋 Loading real WhatsApp sessions from database...')
+      console.log('📋 Loading WhatsApp sessions from backend...')
+      console.log('🔗 API_BASE_URL:', API_BASE_URL)
 
-      // Load sessions directly from database (real data)
-      const dbResponse = await fetch('/api/database/sessions')
-      if (dbResponse.ok) {
-        const dbResult = await dbResponse.json()
-        if (dbResult.success && dbResult.sessions) {
-          // Map database sessions to display format
-          const mappedSessions = dbResult.sessions.map((session: any) => ({
-            id: session.id,
-            name: session.name,
-            status: session.status,
-            phone_number: session.phone_number,
-            qr_code: session.qr_code,
-            is_active: session.is_active,
-            created_at: session.created_at,
-            message_count: 0 // Will be updated by sync
-          }))
+      // Load sessions directly from WhatsApp backend - FIXED PORT
+      const whatsappResponse = await fetch(`${API_BASE_URL}/api/sessions`)
+      console.log('📡 Response status:', whatsappResponse.status)
+      console.log('📡 Response ok:', whatsappResponse.ok)
 
-          setSessions(mappedSessions)
-          console.log('✅ Loaded real database sessions:', mappedSessions.length)
-          console.log('📋 Session details:', mappedSessions.map(s => ({ id: s.id, name: s.name, status: s.status })))
-
-          // Optional background sync (throttled)
-          setTimeout(() => syncWithBackend(), 2000)
-          return
-        }
-      }
-
-      // If no database sessions, try WhatsApp API as fallback
-      const whatsappResponse = await fetch('/api/whatsapp/sessions')
       if (whatsappResponse.ok) {
         const whatsappData = await whatsappResponse.json()
-        console.log('📱 WhatsApp API fallback response:', whatsappData)
+        console.log('📱 WhatsApp backend response:', whatsappData)
+        console.log('📱 Response type:', typeof whatsappData)
+        console.log('📱 Is array:', Array.isArray(whatsappData))
 
-        if (whatsappData.success && whatsappData.sessions && whatsappData.sessions.length > 0) {
-          // Map WhatsApp sessions to our format and save to database
-          const mappedSessions = whatsappData.sessions.map((session: any) => ({
+        if (Array.isArray(whatsappData) && whatsappData.length > 0) {
+          // Map WhatsApp sessions to our format
+          const mappedSessions = whatsappData.map((session: any) => ({
             id: session.id || session.sessionId,
             name: session.name,
             status: session.status === 'connected' ? 'ready' :
-                   session.status === 'scanning' ? 'qr_code' : 'disconnected',
+                   session.status === 'scanning' ? 'qr_code' :
+                   session.status === 'ready' ? 'ready' : 'disconnected',
             phone_number: session.phoneNumber,
             qr_code: session.qrCode,
-            is_active: session.status === 'connected',
+            is_active: session.status === 'connected' || session.status === 'ready',
             created_at: session.lastActivity || new Date().toISOString(),
             message_count: session.messageCount || 0
           }))
 
-          // Save to database for persistence
-          for (const session of mappedSessions) {
-            await fetch('/api/database/sessions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(session)
-            })
-          }
-
           setSessions(mappedSessions)
-          console.log('✅ Loaded and saved WhatsApp sessions:', mappedSessions.length)
+          console.log('✅ Loaded WhatsApp sessions:', mappedSessions.length)
+          console.log('📋 Session details:', mappedSessions.map(s => ({ id: s.id, name: s.name, status: s.status, phone: s.phone_number })))
           return
         }
       }
@@ -126,19 +96,9 @@ export default function WhatsAppNumbers() {
     }
   }
 
-  // Auto-detect server URL
+  // Auto-detect server URL - FIXED TO USE API_BASE_URL
   const getServerUrl = () => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const protocol = window.location.protocol
-
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://192.168.1.230:3001'
-      } else {
-        return `${protocol}//${hostname}:3001`
-      }
-    }
-    return 'http://192.168.1.230:3001'
+    return API_BASE_URL
   }
 
   // Test connectivity
@@ -247,56 +207,30 @@ export default function WhatsAppNumbers() {
       setLoading(true)
       console.log('🆕 Creating session:', sessionName)
 
-      // Create session directly in database first
-      const sessionData = {
-        id: `session_${Date.now()}_${sessionName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${sessions.length}`,
-        name: sessionName.trim(),
-        status: 'initializing',
-        phone_number: null,
-        qr_code: null,
-        is_active: false
-      }
-
-      console.log('💾 Saving to database:', sessionData)
-
-      const dbResponse = await fetch('/api/database/sessions', {
+      // Create session only in backend - single source of truth
+      console.log('📡 Calling backend API...')
+      const backendResponse = await fetch(`/api/backend/sessions/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sessionData)
+        body: JSON.stringify({ name: sessionName.trim() })
       })
 
-      if (!dbResponse.ok) {
-        throw new Error('Failed to save session to database')
+      if (!backendResponse.ok) {
+        throw new Error(`Backend error! status: ${backendResponse.status}`)
       }
 
-      const dbResult = await dbResponse.json()
-      console.log('✅ Database session created:', dbResult)
+      const backendResult = await backendResponse.json()
+      console.log('✅ Backend session created:', backendResult)
 
-      // Try to create session in backend (optional)
-      try {
-        console.log('📡 Calling backend API...')
-        const backendResponse = await fetch(`/api/backend/sessions/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: sessionName, sessionId: sessionData.id })
-        })
-
-        if (backendResponse.ok) {
-          const backendResult = await backendResponse.json()
-          console.log('✅ Backend session created:', backendResult)
-        } else {
-          console.log('⚠️ Backend creation failed, but database session exists')
-        }
-      } catch (backendError) {
-        console.log('⚠️ Backend not available, but database session created')
+      if (!backendResult.success) {
+        throw new Error(backendResult.message || 'Failed to create session')
       }
 
       setSessionName('')
       setShowCreateModal(false)
-      await loadSessions()
 
-      // Delayed sync after session creation
-      setTimeout(() => syncWithBackend(), 5000)
+      // Refresh sessions from backend
+      await loadSessions()
 
       alert('Session created successfully! QR code will appear soon.')
 

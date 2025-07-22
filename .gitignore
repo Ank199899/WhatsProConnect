@@ -39,3 +39,32 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# WhatsApp specific files
+sessions/
+.wwebjs_cache/
+server/.wwebjs_cache/
+*.db
+*.sqlite
+*.sqlite3
+data/
+database/
+
+# Logs
+logs/
+*.log
+
+# Uploads
+public/uploads/
+
+# Backup files
+*.backup
+*.bak
+*-backup-*
+whatsapp-backup-*.tar.gz
+
+# Config files with sensitive data
+config/current-config.json
+
+# PM2 files
+pm2.log

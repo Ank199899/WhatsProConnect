@@ -7,7 +7,7 @@ let realSessions: any[] = []
 async function getRealWhatsAppSessions() {
   try {
     // Try to connect to WhatsApp backend server
-    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3001'
+    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3006'
     console.log('🔗 Connecting to WhatsApp backend:', backendUrl)
 
     const response = await fetch(`${backendUrl}/api/sessions`, {
@@ -22,6 +22,8 @@ async function getRealWhatsAppSessions() {
     if (response.ok) {
       const data = await response.json()
       console.log('📱 Backend response:', data)
+      console.log('📱 Response is array:', Array.isArray(data))
+      console.log('📱 Response length:', data?.length)
 
       // Handle different response formats
       if (Array.isArray(data)) {
@@ -46,6 +48,7 @@ async function getRealWhatsAppSessions() {
     }
   } catch (error) {
     console.log('❌ WhatsApp backend not available:', error.message)
+    console.log('❌ Full error:', error)
   }
 
   return realSessions
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     // Try to create session via WhatsApp backend
     try {
-      const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3001'
+      const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3006'
       const response = await fetch(`${backendUrl}/api/sessions`, {
         method: 'POST',
         headers: {

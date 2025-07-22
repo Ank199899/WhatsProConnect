@@ -3,35 +3,41 @@
 import { useState, useEffect } from 'react'
 import { WhatsAppManagerClient } from '@/lib/whatsapp-manager'
 import { ThemeProvider } from '@/contexts/ThemeContext'
+import { AuthProvider } from '@/contexts/AuthContext'
+import ProtectedRoute from '@/components/ProtectedRoute'
 import Sidebar from '@/components/Sidebar'
 import AdvancedDashboard from '@/components/AdvancedDashboard'
-import Inbox from '@/components/Inbox'
+// import Inbox from '@/components/Inbox' // Missing component
+import NewInbox from '@/components/NewInbox'
 import AIInbox from '@/components/AIInbox'
 import LiveInbox from '@/components/LiveInbox'
+import AdvancedRealTimeInbox from '@/components/AdvancedRealTimeInbox'
 import SessionManager from '@/components/SessionManager'
 import WhatsAppNumbers from '@/components/WhatsAppNumbers'
 import BulkMessaging from '@/components/BulkMessaging'
-import AdvancedBulkMessaging from '@/components/AdvancedBulkMessaging'
 import Analytics from '@/components/Analytics'
 import AdvancedAnalytics from '@/components/AdvancedAnalytics'
 import UserManagement from '@/components/UserManagement'
 import APIManagement from '@/components/APIManagement'
 import TemplateManagement from '@/components/TemplateManagement'
 import RoleManagement from '@/components/RoleManagement'
+import AdvancedRoleManagement from '@/components/AdvancedRoleManagement'
 import ContactsManagement from '@/components/ContactsManagement'
 import AIAgentManagement from '@/components/AIAgentManagement'
 import AdvancedAIAgentManagement from '@/components/AdvancedAIAgentManagement'
 import AIProviderSettings from '@/components/AIProviderSettings'
 import UltimateAIManagement from '@/components/UltimateAIManagement'
+import LoginCredentialsDisplay from '@/components/LoginCredentialsDisplay'
 import FloatingElements from '@/components/FloatingElements'
 import { RealTimeProvider } from '@/contexts/RealTimeContext'
 
-export default function Home() {
+function MainApp() {
   const [whatsappManager] = useState(() => new WhatsAppManagerClient())
   const [isConnected, setIsConnected] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [sessions, setSessions] = useState<any[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
 
   useEffect(() => {
     // Initialize socket connection
@@ -46,37 +52,60 @@ export default function Home() {
       socket.on('disconnect', () => {
         setIsConnected(false)
       })
+
+      // Listen for real-time session updates
+      socket.on('sessions_updated', (updatedSessions: any[]) => {
+        setSessions(updatedSessions)
+        setSessionsLoading(false)
+      })
+
+      socket.on('client_ready', (data: { sessionId: string, phoneNumber: string }) => {
+        loadSessions() // Refresh sessions when client becomes ready
+      })
+
+      socket.on('client_disconnected', (data: { sessionId: string }) => {
+        loadSessions() // Refresh sessions when client disconnects
+      })
     }
 
     // Load sessions on mount
     loadSessions()
 
+    // Set up periodic refresh - only when not on bulk messaging page
+    const interval = setInterval(() => {
+      // Only refresh if not on bulk messaging page to prevent interruption
+      if (activeTab !== 'bulk') {
+        loadSessions()
+      }
+    }, 60000) // Refresh every 60 seconds (reduced frequency)
+
     return () => {
+      clearInterval(interval)
       whatsappManager.disconnect()
     }
-  }, [whatsappManager])
+  }, [whatsappManager, activeTab])
 
   const loadSessions = async () => {
     try {
+      setSessionsLoading(true)
       const sessionList = await whatsappManager.getSessions()
       setSessions(sessionList)
-      console.log('📱 Main App - Sessions loaded:', sessionList.length, sessionList)
 
       // Auto-select first available session if none selected
       if (!selectedSession && sessionList.length > 0) {
         const readySession = sessionList.find((s: any) => s.status === 'ready')
         if (readySession) {
           setSelectedSession(readySession.id)
-          console.log('🎯 Auto-selected session:', readySession.id)
         } else if (sessionList.length > 0) {
           // If no ready session, select first available
           setSelectedSession(sessionList[0].id)
-          console.log('🎯 Auto-selected first session:', sessionList[0].id)
         }
       }
     } catch (error) {
       console.error('Error loading sessions:', error)
       setSessions([])
+    } finally {
+      setSessionsLoading(false)
     }
   }
 
@@ -87,7 +116,7 @@ export default function Home() {
       case 'sessions':
         return <WhatsAppNumbers />
       case 'inbox':
-        return <Inbox
+        return <AdvancedRealTimeInbox
           whatsappManager={whatsappManager}
           sessions={sessions}
           selectedSession={selectedSession}
@@ -98,23 +127,27 @@ export default function Home() {
       case 'ultimate-ai':
         return <UltimateAIManagement />
       case 'bulk':
-        return <AdvancedBulkMessaging
-          sessions={sessions.map(session => {
-            const isActive = session.status === 'ready' || session.isActive
-            const isBlocked = session.status === 'auth_failure' || session.status === 'disconnected'
+        if (sessionsLoading) {
+          return (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading WhatsApp sessions...</p>
+              </div>
+            </div>
+          )
+        }
 
-            return {
-              id: session.id,
-              name: session.name,
-              phone: session.phoneNumber || session.phone_number || 'Not Connected',
-              status: isActive ? 'active' : 'inactive',
-              lastUsed: session.createdAt || new Date().toISOString().split('T')[0],
-              messagesSent: session.stats?.totalMessages || 0,
-              isBlocked: isBlocked
-            }
-          })}
-          selectedSession={selectedSession}
-          onSessionSelected={setSelectedSession}
+        // Use new BulkMessaging component
+        return <BulkMessaging
+          sessions={sessions.map(session => ({
+            id: session.id,
+            name: session.name,
+            phoneNumber: session.phoneNumber,
+            status: session.status,
+            isActive: session.isActive
+          }))}
+          sessionsLoading={sessionsLoading}
         />
       case 'templates':
         return <TemplateManagement />
@@ -125,7 +158,9 @@ export default function Home() {
       case 'users':
         return <UserManagement />
       case 'roles':
-        return <RoleManagement />
+        return <AdvancedRoleManagement />
+      case 'credentials':
+        return <LoginCredentialsDisplay />
       case 'api':
         return <APIManagement />
       case 'settings':
@@ -151,5 +186,15 @@ export default function Home() {
         </main>
       </RealTimeProvider>
     </ThemeProvider>
+  )
+}
+
+export default function Home() {
+  return (
+    <AuthProvider>
+      <ProtectedRoute>
+        <MainApp />
+      </ProtectedRoute>
+    </AuthProvider>
   )
 }

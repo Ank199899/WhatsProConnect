@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
       // Only proxy specific backend API routes, not all API routes
       {
         source: '/api/backend/:path*',
-        destination: 'http://localhost:3001/api/:path*', // FIXED PORT: Backend always 3001
+        destination: 'http://192.168.1.230:3006/api/:path*', // Production IP and Backend Port
       },
     ];
   },

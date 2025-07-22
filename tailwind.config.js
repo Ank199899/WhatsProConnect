@@ -18,6 +18,7 @@ module.exports = {
         'slide-down': 'slideDown 0.3s ease-out',
         'scale-in': 'scaleIn 0.2s ease-out',
         'bounce-slow': 'bounce 2s infinite',
+        'blob': 'blob 7s infinite',
       },
       keyframes: {
         fadeIn: {
@@ -36,6 +37,12 @@ module.exports = {
           '0%': { transform: 'scale(0.95)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
+        blob: {
+          '0%': { transform: 'translate(0px, 0px) scale(1)' },
+          '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+          '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+          '100%': { transform: 'translate(0px, 0px) scale(1)' },
+        },
       },
       backdropBlur: {
         xs: '2px',
@@ -47,6 +54,10 @@ module.exports = {
         'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
         'medium': '0 4px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         'large': '0 10px 50px -12px rgba(0, 0, 0, 0.25)',
+      },
+      animationDelay: {
+        '2000': '2s',
+        '4000': '4s',
       },
     },
   },

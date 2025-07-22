@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'whatsapp-nextjs',
       script: 'npm',
-      args: 'start',
+      args: 'start -- -H 0.0.0.0 -p 3007',
       cwd: '/home/admin1/WhatsappAdvWebapp/whatsapp-advanced-webapp',
       instances: 1,
       autorestart: true,
@@ -11,7 +11,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3005,
+        PORT: 3007,
         HOST: '0.0.0.0'
       },
       error_file: './logs/nextjs-error.log',
@@ -29,7 +29,7 @@ module.exports = {
       max_memory_restart: '2G',
       env: {
         NODE_ENV: 'production',
-        WHATSAPP_SERVER_PORT: 3001,
+        WHATSAPP_SERVER_PORT: 3006,
         HOST: '0.0.0.0'
       },
       error_file: './logs/whatsapp-error.log',

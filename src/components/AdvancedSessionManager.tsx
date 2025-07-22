@@ -81,30 +81,12 @@ export default function AdvancedSessionManager({ whatsappManager }: AdvancedSess
   const [selectedSessionForAgent, setSelectedSessionForAgent] = useState<string | null>(null)
 
   useEffect(() => {
+    // Clear any stale LocalStorage data first
+    LocalStorage.clearAllData()
+
     loadSessions()
     loadAIAgents()
     setupEventListeners()
-
-    // Add some sample data if no sessions exist
-    const existingSessions = LocalStorage.getSessions()
-    if (existingSessions.length === 0) {
-      // Create sample sessions for demo
-      LocalStorage.createSession({
-        name: 'Business Account',
-        status: 'ready',
-        phone_number: '+1234567890',
-        is_active: true
-      })
-
-      LocalStorage.createSession({
-        name: 'Support Account',
-        status: 'qr_code',
-        is_active: true
-      })
-
-      // Reload sessions after adding samples
-      setTimeout(() => loadSessions(), 100)
-    }
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(loadSessions, 30000)

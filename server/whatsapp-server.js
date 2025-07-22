@@ -8,6 +8,40 @@ const path = require('path');
 const qrcode = require('qrcode-terminal');
 const { v4: uuidv4 } = require('uuid');
 const fetch = require('node-fetch');
+const Database = require('better-sqlite3');
+
+// Load dynamic configuration
+let DYNAMIC_CONFIG = null
+try {
+  if (process.env.DYNAMIC_CONFIG) {
+    DYNAMIC_CONFIG = JSON.parse(process.env.DYNAMIC_CONFIG)
+    console.log('🎯 Using dynamic config from environment')
+  } else {
+    const configPath = path.join(__dirname, '../config/current-config.json')
+    if (fs.existsSync(configPath)) {
+      DYNAMIC_CONFIG = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+      console.log('🎯 Using dynamic config from file')
+    }
+  }
+} catch (err) {
+  console.log('⚠️  Dynamic config not available, using fallback')
+}
+
+// Configuration with fallback
+const CONFIG = DYNAMIC_CONFIG || {
+  NETWORK: { PRIMARY_IP: '192.168.1.230' },
+  PORTS: { FRONTEND: 3008, BACKEND: 3006 },
+  URLS: {
+    PUBLIC_FRONTEND: 'http://192.168.1.230:3008',
+    PUBLIC_API: 'http://192.168.1.230:3006/api',
+    BIND_BACKEND: 'http://0.0.0.0:3006'
+  }
+}
+
+// Legacy support
+const PORTS = { FRONTEND: CONFIG.PORTS.FRONTEND, BACKEND: CONFIG.PORTS.BACKEND }
+const HOST = process.env.HOST || '0.0.0.0'
+const URLS = CONFIG.URLS
 
 class WhatsAppManager {
     constructor() {
@@ -21,13 +55,110 @@ class WhatsAppManager {
                 methods: ["GET", "POST"]
             }
         });
-        
+
+        // Initialize database
+        this.initializeDatabase();
+
         this.setupExpress();
         this.setupSocketIO();
         this.ensureSessionsDirectory();
 
         // Restore sessions from database on startup
         this.restoreSessionsFromDatabase();
+    }
+
+    initializeDatabase() {
+        try {
+            // Create database directory if it doesn't exist
+            const dbDir = path.join(__dirname, '../data');
+            if (!fs.existsSync(dbDir)) {
+                fs.mkdirSync(dbDir, { recursive: true });
+            }
+
+            this.dbPath = path.join(dbDir, 'whatsapp.db');
+            this.db = new Database(this.dbPath);
+
+            // Enable foreign keys
+            this.db.pragma('foreign_keys = ON');
+
+            // Create tables
+            this.createTables();
+
+            console.log('✅ Database initialized successfully');
+        } catch (error) {
+            console.error('❌ Database initialization failed:', error);
+            throw error;
+        }
+    }
+
+    createTables() {
+        // WhatsApp Sessions Table
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS whatsapp_sessions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                phone_number TEXT,
+                status TEXT NOT NULL DEFAULT 'initializing' CHECK (status IN ('initializing', 'qr_code', 'ready', 'disconnected', 'auth_failure')),
+                qr_code TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Messages Table
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                whatsapp_message_id TEXT,
+                from_number TEXT NOT NULL,
+                to_number TEXT NOT NULL,
+                body TEXT,
+                message_type TEXT DEFAULT 'text',
+                is_group_message INTEGER DEFAULT 0,
+                author TEXT,
+                timestamp INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                media_url TEXT,
+                media_type TEXT,
+                filename TEXT,
+                contact_name TEXT,
+                profile_pic_url TEXT,
+                FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id)
+            )
+        `);
+
+        // Add new columns to existing messages table if they don't exist
+        try {
+            this.db.exec(`ALTER TABLE messages ADD COLUMN contact_name TEXT`);
+        } catch (e) {
+            // Column already exists
+        }
+        try {
+            this.db.exec(`ALTER TABLE messages ADD COLUMN profile_pic_url TEXT`);
+        } catch (e) {
+            // Column already exists
+        }
+
+        // Contacts Table
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS contacts (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                whatsapp_id TEXT NOT NULL,
+                name TEXT,
+                phone_number TEXT,
+                is_group INTEGER DEFAULT 0,
+                profile_pic_url TEXT,
+                last_seen TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id)
+            )
+        `);
+
+        console.log('✅ Database tables created');
     }
 
     ensureSessionsDirectory() {
@@ -40,6 +171,9 @@ class WhatsAppManager {
     setupExpress() {
         this.app.use(cors());
         this.app.use(express.json());
+
+        // Serve static files (for test pages)
+        this.app.use(express.static(path.join(__dirname, '..')));
         
         // Get all sessions
         this.app.get('/api/sessions', (req, res) => {
@@ -55,30 +189,21 @@ class WhatsAppManager {
 
                 console.log(`🆕 Creating new session: ${sessionName} (${sessionId})`);
 
-                // Save to database first
+                // Save to database directly
                 try {
-                    const apiUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.230:3005';
-                    const response = await fetch(`${apiUrl}/api/database/sessions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: sessionId,
-                            name: sessionName,
-                            status: 'initializing',
-                            is_active: true
-                        })
-                    });
+                    const now = new Date().toISOString();
+                    const stmt = this.db.prepare(`
+                        INSERT INTO whatsapp_sessions (id, name, status, is_active, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `);
 
-                    if (!response.ok) {
-                        throw new Error(`Database save failed: ${response.statusText}`);
-                    }
-
+                    stmt.run(sessionId, sessionName, 'initializing', 1, now, now);
                     console.log('✅ Session saved to database');
                 } catch (dbError) {
                     console.error('❌ Database save error:', dbError);
                     return res.status(500).json({
                         success: false,
-                        error: 'Failed to save session to database'
+                        error: 'Failed to save session to database: ' + dbError.message
                     });
                 }
 
@@ -133,15 +258,8 @@ class WhatsAppManager {
 
                 // Delete from database
                 try {
-                    const apiUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.230:3005';
-                    const response = await fetch(`${apiUrl}/api/database/sessions/${sessionId}`, {
-                        method: 'DELETE'
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Database delete failed: ${response.statusText}`);
-                    }
-
+                    const stmt = this.db.prepare('DELETE FROM whatsapp_sessions WHERE id = ?');
+                    stmt.run(sessionId);
                     console.log('✅ Session deleted from database');
                 } catch (dbError) {
                     console.error('❌ Database delete error:', dbError);
@@ -164,24 +282,647 @@ class WhatsAppManager {
             }
         });
 
+        // Connect session endpoint
+        this.app.post('/api/sessions/:sessionId/connect', async (req, res) => {
+            const { sessionId } = req.params;
+            console.log('🔌 Connecting session:', sessionId);
+
+            try {
+                const session = this.sessions.get(sessionId);
+                if (!session) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Session not found'
+                    });
+                }
+
+                // If session is already connected, return success
+                if (session.status === 'ready' || session.status === 'connected') {
+                    return res.json({
+                        success: true,
+                        message: 'Session already connected',
+                        sessionId,
+                        status: session.status
+                    });
+                }
+
+                // If client doesn't exist, create it
+                if (!this.clients.has(sessionId)) {
+                    console.log('🔄 Creating WhatsApp client for session:', sessionId);
+                    this.createWhatsAppClient(sessionId, session.name);
+                }
+
+                // Update session status to connecting
+                session.status = 'connecting';
+                this.sessions.set(sessionId, session);
+
+                // Broadcast update
+                this.broadcastSessionsUpdate();
+
+                res.json({
+                    success: true,
+                    message: 'Session connection initiated',
+                    sessionId,
+                    status: 'connecting'
+                });
+
+            } catch (error) {
+                console.error('❌ Error connecting session:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to connect session'
+                });
+            }
+        });
+
+        // Debug endpoint to check client status
+        this.app.get('/api/debug/clients', (req, res) => {
+            const clientsInfo = []
+            for (const [sessionId, client] of this.clients.entries()) {
+                clientsInfo.push({
+                    sessionId,
+                    hasClient: !!client,
+                    isReady: client && client.info ? true : false,
+                    phoneNumber: client && client.info ? client.info.wid?.user : null,
+                    state: client && client.pupPage ? 'connected' : 'disconnected'
+                })
+            }
+
+            res.json({
+                totalClients: this.clients.size,
+                clients: clientsInfo,
+                sessions: Array.from(this.sessions.values())
+            })
+        })
+
+        // Debug endpoint to check socket connections
+        this.app.get('/api/debug/socket', (req, res) => {
+            const socketInfo = {
+                totalConnections: this.io.engine.clientsCount,
+                connectedSockets: [],
+                serverTime: new Date().toISOString()
+            }
+
+            // Get connected socket info
+            this.io.sockets.sockets.forEach((socket, id) => {
+                socketInfo.connectedSockets.push({
+                    id: id,
+                    connected: socket.connected,
+                    rooms: Array.from(socket.rooms)
+                })
+            })
+
+            res.json(socketInfo)
+        })
+
+        // Debug endpoint to get conversations
+        this.app.get('/api/debug/conversations', (req, res) => {
+            try {
+                // Get all messages from database
+                const messages = this.db.prepare('SELECT * FROM messages ORDER BY timestamp DESC').all()
+
+                // Group messages by conversation
+                const conversationMap = new Map()
+
+                messages.forEach(message => {
+                    // Determine conversation ID
+                    const contactId = message.from_number === 'me' ? message.to_number : message.from_number
+                    const conversationId = `${message.session_id}_${contactId}`
+
+                    if (!conversationMap.has(conversationId)) {
+                        conversationMap.set(conversationId, {
+                            id: conversationId,
+                            sessionId: message.session_id,
+                            contactId: contactId,
+                            contactName: message.contact_name || contactId.replace('@c.us', '').replace('@g.us', ''),
+                            profilePicUrl: message.profile_pic_url,
+                            messages: [],
+                            lastMessage: null,
+                            unreadCount: 0,
+                            isGroup: message.is_group_message === 1
+                        })
+                    }
+
+                    const conversation = conversationMap.get(conversationId)
+                    conversation.messages.push(message)
+
+                    // Set last message
+                    if (!conversation.lastMessage || message.timestamp > conversation.lastMessage.timestamp) {
+                        conversation.lastMessage = {
+                            body: message.body,
+                            timestamp: message.timestamp,
+                            from: message.from_number
+                        }
+                    }
+                })
+
+                const conversations = Array.from(conversationMap.values())
+
+                // Transform conversations for frontend
+                const transformedConversations = conversations.map(conv => ({
+                    id: conv.contactId,
+                    name: conv.contactName,
+                    phoneNumber: conv.contactId,
+                    avatar: conv.profilePicUrl,
+                    lastMessage: conv.lastMessage?.body || 'No messages',
+                    lastMessageTime: conv.lastMessage?.timestamp || Date.now(),
+                    unreadCount: conv.unreadCount,
+                    isPinned: false,
+                    isOnline: false,
+                    messages: conv.messages.slice(-10) // Last 10 messages
+                }))
+
+                res.json(transformedConversations)
+            } catch (error) {
+                console.error('❌ Debug conversations error:', error)
+                res.status(500).json({ error: 'Failed to get conversations', details: error.message })
+            }
+        })
+
+        // Get messages for specific conversation
+        this.app.get('/api/messages/:chatId', (req, res) => {
+            try {
+                const { chatId } = req.params
+                const { sessionId } = req.query
+
+                let query = `
+                    SELECT * FROM messages
+                    WHERE (from_number = ? OR to_number = ?)
+                    ORDER BY timestamp ASC
+                `
+                let params = [chatId, chatId]
+
+                if (sessionId) {
+                    query = `
+                        SELECT * FROM messages
+                        WHERE (from_number = ? OR to_number = ?) AND session_id = ?
+                        ORDER BY timestamp ASC
+                    `
+                    params = [chatId, chatId, sessionId]
+                }
+
+                const messages = this.db.prepare(query).all(...params)
+
+                // Transform messages to frontend format
+                const transformedMessages = messages.map(msg => ({
+                    id: msg.id,
+                    content: msg.content || msg.body,
+                    type: msg.message_type || 'text',
+                    timestamp: msg.timestamp,
+                    isFromMe: msg.from_number === 'me',
+                    status: 'delivered',
+                    mediaUrl: msg.media_url,
+                    fileName: msg.file_name,
+                    fileSize: msg.file_size
+                }))
+
+                console.log(`📊 Retrieved ${transformedMessages.length} messages for chat ${chatId}`)
+                res.json(transformedMessages)
+            } catch (error) {
+                console.error('❌ Error retrieving messages:', error)
+                res.status(500).json({ error: 'Failed to retrieve messages' })
+            }
+        })
+
+        // Send message endpoint
+        this.app.post('/api/send-message', async (req, res) => {
+            try {
+                const { sessionId, chatId, message, replyTo } = req.body
+
+                if (!sessionId || !chatId || !message) {
+                    return res.status(400).json({ error: 'Missing required fields' })
+                }
+
+                const client = this.clients.get(sessionId)
+                if (!client) {
+                    return res.status(404).json({ error: 'Session not found' })
+                }
+
+                console.log(`📤 Sending message to ${chatId} from session ${sessionId}`)
+
+                // Send message via WhatsApp
+                const sentMessage = await client.sendMessage(chatId, message)
+
+                // Save to database
+                const stmt = this.db.prepare(`
+                    INSERT INTO messages (
+                        id, session_id, from_number, to_number, content,
+                        message_type, timestamp, is_from_me
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `)
+
+                stmt.run(
+                    sentMessage.id._serialized,
+                    sessionId,
+                    'me',
+                    chatId,
+                    message,
+                    'text',
+                    Date.now(),
+                    1
+                )
+
+                console.log('✅ Message sent and saved to database')
+                res.json({ success: true, messageId: sentMessage.id._serialized })
+
+            } catch (error) {
+                console.error('❌ Error sending message:', error)
+                res.status(500).json({ error: 'Failed to send message' })
+            }
+        })
+
+        // Send media endpoint
+        this.app.post('/api/send-media', async (req, res) => {
+            try {
+                const { sessionId, chatId } = req.body
+
+                if (!sessionId || !chatId) {
+                    return res.status(400).json({ error: 'Missing required fields' })
+                }
+
+                const client = this.clients.get(sessionId)
+                if (!client) {
+                    return res.status(404).json({ error: 'Session not found' })
+                }
+
+                console.log('📤 Media upload endpoint called')
+
+                // For now, return success (implement file handling later)
+                res.json({ success: true, message: 'Media upload endpoint ready' })
+
+            } catch (error) {
+                console.error('❌ Error sending media:', error)
+                res.status(500).json({ error: 'Failed to send media' })
+            }
+        })
+
+        // Ultra Advanced Endpoints
+        this.app.get('/api/ultra/conversations', async (req, res) => {
+            try {
+                const { sessionId } = req.query
+
+                if (!sessionId) {
+                    return res.status(400).json({ error: 'Session ID required' })
+                }
+
+                console.log(`🔄 Loading ultra conversations for session: ${sessionId}`)
+
+                // Get all messages from database for this session
+                const messages = this.db.prepare(`
+                    SELECT * FROM messages
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC
+                `).all(sessionId)
+
+                // Group messages by conversation with enhanced data
+                const conversationMap = new Map()
+
+                messages.forEach(message => {
+                    const contactId = message.from_number === 'me' ? message.to_number : message.from_number
+                    const conversationId = `${sessionId}_${contactId}`
+
+                    if (!conversationMap.has(conversationId)) {
+                        conversationMap.set(conversationId, {
+                            id: contactId,
+                            contactId: contactId,
+                            sessionId: sessionId,
+                            name: message.contact_name || contactId.replace('@c.us', '').replace('@g.us', ''),
+                            phoneNumber: contactId,
+                            profilePic: message.profile_pic_url,
+                            messages: [],
+                            lastMessage: null,
+                            lastMessageTime: 0,
+                            unreadCount: 0,
+                            isPinned: false,
+                            isMuted: false,
+                            isArchived: false,
+                            isGroup: message.is_group_message === 1,
+                            tags: [],
+                            customFields: {}
+                        })
+                    }
+
+                    const conversation = conversationMap.get(conversationId)
+                    conversation.messages.push(message)
+
+                    // Set last message
+                    if (!conversation.lastMessage || message.timestamp > conversation.lastMessageTime) {
+                        conversation.lastMessage = {
+                            content: message.content || message.body,
+                            timestamp: message.timestamp,
+                            isFromMe: message.from_number === 'me',
+                            type: message.message_type || 'text'
+                        }
+                        conversation.lastMessageTime = message.timestamp
+                    }
+
+                    // Count unread messages (assuming messages not from me are unread)
+                    if (message.from_number !== 'me') {
+                        conversation.unreadCount++
+                    }
+                })
+
+                const conversations = Array.from(conversationMap.values())
+                console.log(`✅ Ultra conversations loaded: ${conversations.length}`)
+
+                res.json(conversations)
+            } catch (error) {
+                console.error('❌ Error loading ultra conversations:', error)
+                res.status(500).json({ error: 'Failed to load conversations' })
+            }
+        })
+
+        // Ultra contact details endpoint
+        this.app.get('/api/ultra/contact/:contactId', async (req, res) => {
+            try {
+                const { contactId } = req.params
+                const { sessionId } = req.query
+
+                console.log(`🔄 Loading ultra contact details: ${contactId}`)
+
+                // Get contact from database
+                const contact = this.db.prepare(`
+                    SELECT * FROM contacts
+                    WHERE contact_id = ? AND session_id = ?
+                `).get(contactId, sessionId)
+
+                if (contact) {
+                    res.json({
+                        id: contact.contact_id,
+                        name: contact.name,
+                        phoneNumber: contact.phone_number,
+                        profilePic: contact.profile_pic_url,
+                        about: contact.about,
+                        status: contact.status,
+                        lastSeen: contact.last_seen,
+                        isBlocked: contact.is_blocked === 1,
+                        isBusiness: contact.is_business === 1,
+                        isVerified: contact.is_verified === 1,
+                        labels: contact.labels ? JSON.parse(contact.labels) : [],
+                        tags: contact.tags ? JSON.parse(contact.tags) : [],
+                        notes: contact.notes,
+                        customName: contact.custom_name,
+                        location: contact.location ? JSON.parse(contact.location) : null,
+                        socialLinks: contact.social_links ? JSON.parse(contact.social_links) : []
+                    })
+                } else {
+                    // Return basic info if not in database
+                    res.json({
+                        id: contactId,
+                        name: contactId.replace('@c.us', '').replace('@g.us', ''),
+                        phoneNumber: contactId,
+                        profilePic: null,
+                        isBlocked: false,
+                        isBusiness: false,
+                        isVerified: false,
+                        labels: [],
+                        tags: [],
+                        socialLinks: []
+                    })
+                }
+            } catch (error) {
+                console.error('❌ Error loading ultra contact:', error)
+                res.status(500).json({ error: 'Failed to load contact' })
+            }
+        })
+
+        // Ultra messages endpoint
+        this.app.get('/api/ultra/messages/:chatId', (req, res) => {
+            try {
+                const { chatId } = req.params
+                const { sessionId } = req.query
+
+                console.log(`🔄 Loading ultra messages for: ${chatId}`)
+
+                const messages = this.db.prepare(`
+                    SELECT * FROM messages
+                    WHERE (from_number = ? OR to_number = ?) AND session_id = ?
+                    ORDER BY timestamp ASC
+                `).all(chatId, chatId, sessionId)
+
+                // Transform messages with enhanced data
+                const transformedMessages = messages.map(msg => ({
+                    id: msg.id,
+                    content: msg.content || msg.body,
+                    type: msg.message_type || 'text',
+                    timestamp: msg.timestamp,
+                    isFromMe: msg.from_number === 'me',
+                    status: 'delivered',
+                    mediaUrl: msg.media_url,
+                    thumbnailUrl: msg.thumbnail_url,
+                    fileName: msg.file_name,
+                    fileSize: msg.file_size,
+                    duration: msg.duration,
+                    mimeType: msg.mime_type,
+                    replyTo: msg.reply_to,
+                    mentions: msg.mentions ? JSON.parse(msg.mentions) : [],
+                    isForwarded: msg.is_forwarded === 1,
+                    forwardedFrom: msg.forwarded_from,
+                    isStarred: msg.is_starred === 1,
+                    reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
+                    editedAt: msg.edited_at,
+                    deletedAt: msg.deleted_at,
+                    location: msg.location ? JSON.parse(msg.location) : null,
+                    contact: msg.contact_data ? JSON.parse(msg.contact_data) : null
+                }))
+
+                console.log(`✅ Ultra messages loaded: ${transformedMessages.length}`)
+                res.json(transformedMessages)
+            } catch (error) {
+                console.error('❌ Error loading ultra messages:', error)
+                res.status(500).json({ error: 'Failed to load messages' })
+            }
+        })
+
+        // Ultra send message endpoint
+        this.app.post('/api/ultra/send-message', async (req, res) => {
+            try {
+                const { sessionId, chatId, message, replyTo, mentions, type } = req.body
+
+                if (!sessionId || !chatId || !message) {
+                    return res.status(400).json({ error: 'Missing required fields' })
+                }
+
+                const client = this.clients.get(sessionId)
+                if (!client) {
+                    return res.status(404).json({ error: 'Session not found' })
+                }
+
+                console.log(`📤 Sending ultra message to ${chatId}`)
+
+                // Send message via WhatsApp
+                const sentMessage = await client.sendMessage(chatId, message)
+
+                // Save to database with enhanced data
+                const stmt = this.db.prepare(`
+                    INSERT INTO messages (
+                        id, session_id, from_number, to_number, content,
+                        message_type, timestamp, is_from_me, reply_to, mentions
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `)
+
+                stmt.run(
+                    sentMessage.id._serialized,
+                    sessionId,
+                    'me',
+                    chatId,
+                    message,
+                    type || 'text',
+                    Date.now(),
+                    1,
+                    replyTo || null,
+                    mentions ? JSON.stringify(mentions) : null
+                )
+
+                console.log('✅ Ultra message sent and saved')
+                res.json({ success: true, messageId: sentMessage.id._serialized })
+
+            } catch (error) {
+                console.error('❌ Error sending ultra message:', error)
+                res.status(500).json({ error: 'Failed to send message' })
+            }
+        })
+
+        // Ultra send media endpoint
+        this.app.post('/api/ultra/send-media', async (req, res) => {
+            try {
+                const { sessionId, chatId, caption } = req.body
+
+                if (!sessionId || !chatId) {
+                    return res.status(400).json({ error: 'Missing required fields' })
+                }
+
+                const client = this.clients.get(sessionId)
+                if (!client) {
+                    return res.status(404).json({ error: 'Session not found' })
+                }
+
+                console.log('📤 Ultra media upload endpoint called')
+
+                // For now, return success (implement file handling with multer later)
+                res.json({
+                    success: true,
+                    message: 'Ultra media upload endpoint ready',
+                    mediaUrl: '/placeholder-media-url'
+                })
+
+            } catch (error) {
+                console.error('❌ Error sending ultra media:', error)
+                res.status(500).json({ error: 'Failed to send media' })
+            }
+        })
+
+        // Manual sync endpoint for debugging
+        this.app.post('/api/sync-chats', async (req, res) => {
+            try {
+                const { sessionId } = req.body
+                console.log(`🔄 Manual sync requested for session: ${sessionId}`)
+
+                if (!sessionId) {
+                    return res.status(400).json({ error: 'Session ID required' })
+                }
+
+                const client = this.clients.get(sessionId)
+                if (!client) {
+                    return res.status(404).json({ error: 'Session not found or not connected' })
+                }
+
+                // Check if client is ready
+                if (!client.info) {
+                    return res.status(400).json({ error: 'Client not ready. Please scan QR code first.' })
+                }
+
+                console.log(`📱 Client info:`, client.info.wid?.user)
+
+                // Trigger manual sync
+                await this.syncAllChats(sessionId, client)
+
+                res.json({
+                    success: true,
+                    message: 'Chat sync initiated',
+                    sessionId,
+                    phoneNumber: client.info.wid?.user
+                })
+            } catch (error) {
+                console.error('❌ Manual sync error:', error)
+                res.status(500).json({ error: 'Sync failed', details: error.message })
+            }
+        })
+
         // Test message event (for debugging)
         this.app.post('/api/test-message', (req, res) => {
             console.log('🧪 Test message endpoint called')
 
+            // Get first available session or use provided sessionId
+            const { sessionId } = req.body || {}
+            const availableSessions = Array.from(this.sessions.values())
+            const targetSession = sessionId || (availableSessions.length > 0 ? availableSessions[0].id : 'test-session')
+
+            // Create different test messages for different contacts
+            const contacts = [
+                { from: '1234567890@c.us', to: 'me', name: 'John Doe' },
+                { from: '9876543210@c.us', to: 'me', name: 'Jane Smith' },
+                { from: '5555555555@c.us', to: 'me', name: 'Bob Wilson' },
+                { from: 'me', to: '1234567890@c.us', name: 'My Reply' }
+            ]
+
+            const randomContact = contacts[Math.floor(Math.random() * contacts.length)]
+
             const testMessage = {
-                sessionId: 'test-session',
+                sessionId: targetSession,
                 id: 'test_' + Date.now(),
-                body: 'Test message from server',
-                from: '1234567890@c.us',
-                to: '0987654321@c.us',
+                body: `Test message from ${randomContact.name} - ${new Date().toLocaleTimeString()}`,
+                from: randomContact.from,
+                to: randomContact.to,
                 timestamp: Date.now(),
                 type: 'chat',
                 isGroupMsg: false,
                 author: null
             }
 
+            // Save test message to database
+            try {
+                const now = new Date().toISOString();
+
+                // First create session if it doesn't exist (only for test-session)
+                if (targetSession === 'test-session') {
+                    const sessionStmt = this.db.prepare(`
+                        INSERT OR IGNORE INTO whatsapp_sessions (id, name, status, is_active, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    `);
+
+                    sessionStmt.run('test-session', 'Test Session', 'ready', 1, now, now);
+                }
+
+                const stmt = this.db.prepare(`
+                    INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+
+                const dbMessageId = `test_msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                stmt.run(
+                    dbMessageId,
+                    testMessage.sessionId,
+                    testMessage.id,
+                    testMessage.from,
+                    testMessage.to,
+                    testMessage.body,
+                    'text', // Convert 'chat' to 'text' for database constraint
+                    testMessage.isGroupMsg ? 1 : 0,
+                    testMessage.author,
+                    testMessage.timestamp,
+                    now
+                );
+
+                console.log(`📝 Test message saved to database: ${dbMessageId}`);
+            } catch (dbError) {
+                console.error('❌ Failed to save test message to database:', dbError);
+            }
+
             console.log('📡 Emitting test message:', testMessage)
             this.io.emit('new_message', testMessage)
+            this.io.emit('test_message', testMessage)
 
             res.json({
                 success: true,
@@ -234,13 +975,48 @@ class WhatsAppManager {
 
             try {
                 const chatId = to.includes('@') ? to : `${to}@c.us`;
-                await client.sendMessage(chatId, message);
-                
+                const result = await client.sendMessage(chatId, message);
+
+                console.log(`✅ Message sent successfully to ${to}`);
+
+                // Save message to database
+                try {
+                    const messageId = result.id._serialized || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    const timestamp = Date.now();
+                    const now = new Date().toISOString();
+
+                    const stmt = this.db.prepare(`
+                        INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `);
+
+                    const dbMessageId = `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+                    stmt.run(
+                        dbMessageId,
+                        sessionId,
+                        messageId,
+                        'me', // from_number for sent messages
+                        chatId,
+                        message,
+                        type,
+                        0, // is_group_message
+                        null, // author
+                        timestamp,
+                        now
+                    );
+
+                    console.log(`📝 Message saved to database: ${dbMessageId}`);
+                } catch (dbError) {
+                    console.error('❌ Failed to save message to database:', dbError);
+                    // Don't fail the API call for database errors
+                }
+
                 res.json({
                     success: true,
                     message: 'Message sent successfully'
                 });
             } catch (error) {
+                console.error(`❌ Error sending message to ${to}:`, error);
                 res.status(500).json({
                     success: false,
                     message: 'Failed to send message',
@@ -278,10 +1054,17 @@ class WhatsAppManager {
             });
         });
 
-        // Get contacts
-        this.app.get('/api/contacts/:sessionId', async (req, res) => {
-            const { sessionId } = req.params;
-            
+        // Send media message
+        this.app.post('/api/messages/send-media', async (req, res) => {
+            const { sessionId, to, mediaType, mediaUrl, caption = '', filename = 'media' } = req.body;
+
+            console.log(`📎 Sending media message to ${to} via session ${sessionId}:`, {
+                mediaType,
+                mediaUrl,
+                caption,
+                filename
+            });
+
             if (!this.clients.has(sessionId)) {
                 return res.status(404).json({
                     success: false,
@@ -290,22 +1073,263 @@ class WhatsAppManager {
             }
 
             const client = this.clients.get(sessionId);
-            
+
+            if (!client.info) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'WhatsApp client not ready'
+                });
+            }
+
             try {
+                const chatId = to.includes('@') ? to : `${to}@c.us`;
+
+                // Download media from URL if it's a blob URL or external URL
+                let mediaMessage;
+
+                if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('http')) {
+                    // For blob URLs or external URLs, we need to fetch the media
+                    const fetch = (await import('node-fetch')).default;
+                    const response = await fetch(mediaUrl);
+                    const buffer = await response.buffer();
+
+                    // Create MessageMedia object
+                    const { MessageMedia } = await import('whatsapp-web.js');
+                    const media = new MessageMedia(
+                        response.headers.get('content-type') || `${mediaType}/*`,
+                        buffer.toString('base64'),
+                        filename
+                    );
+
+                    mediaMessage = media;
+                } else {
+                    // For local file paths
+                    const fs = require('fs');
+                    const path = require('path');
+
+                    let filePath = mediaUrl;
+                    if (mediaUrl.startsWith('/uploads/')) {
+                        filePath = path.join(process.cwd(), 'public', mediaUrl);
+                    }
+
+                    if (fs.existsSync(filePath)) {
+                        const { MessageMedia } = await import('whatsapp-web.js');
+                        mediaMessage = MessageMedia.fromFilePath(filePath);
+                    } else {
+                        throw new Error(`Media file not found: ${filePath}`);
+                    }
+                }
+
+                // Send media message
+                const result = await client.sendMessage(chatId, mediaMessage, { caption });
+
+                console.log(`✅ Media message sent successfully to ${to}`);
+
+                // Save media message to database
+                try {
+                    const messageId = result.id._serialized || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    const timestamp = Date.now();
+                    const now = new Date().toISOString();
+
+                    const stmt = this.db.prepare(`
+                        INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at, media_url, media_type, filename)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `);
+
+                    const dbMessageId = `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+                    stmt.run(
+                        dbMessageId,
+                        sessionId,
+                        messageId,
+                        'me', // from_number for sent messages
+                        chatId,
+                        caption || `📎 ${filename}`,
+                        mediaType,
+                        0, // is_group_message
+                        null, // author
+                        timestamp,
+                        now,
+                        mediaUrl,
+                        mediaType,
+                        filename
+                    );
+
+                    console.log(`📝 Media message saved to database: ${dbMessageId}`);
+                } catch (dbError) {
+                    console.error('❌ Failed to save media message to database:', dbError);
+                    // Don't fail the API call for database errors
+                }
+
+                res.json({
+                    success: true,
+                    message: 'Media message sent successfully',
+                    messageId: result.id._serialized
+                });
+
+            } catch (error) {
+                console.error(`❌ Error sending media message to ${to}:`, error);
+                res.status(500).json({
+                    success: false,
+                    message: error.message || 'Failed to send media message'
+                });
+            }
+        });
+
+        // Database endpoints
+        this.app.get('/api/database/messages', (req, res) => {
+            try {
+                const stmt = this.db.prepare('SELECT * FROM messages ORDER BY timestamp DESC LIMIT 1000');
+                const messages = stmt.all();
+                console.log(`📊 Retrieved ${messages.length} messages from database`);
+                res.json(messages);
+            } catch (error) {
+                console.error('❌ Error retrieving messages from database:', error);
+                res.status(500).json({ error: 'Failed to retrieve messages' });
+            }
+        });
+
+        // Debug endpoint for specific conversation
+        this.app.get('/api/debug/conversation/:contactId', (req, res) => {
+            try {
+                const { contactId } = req.params
+                const messages = this.db.prepare(`
+                    SELECT * FROM messages
+                    WHERE (from_number = ? AND to_number = 'me')
+                       OR (from_number = 'me' AND to_number = ?)
+                    ORDER BY timestamp ASC
+                `).all(contactId, contactId)
+
+                console.log(`🔍 Debug: Found ${messages.length} messages for conversation with ${contactId}`)
+                res.json({
+                    contactId,
+                    messageCount: messages.length,
+                    messages: messages.map(msg => ({
+                        id: msg.id,
+                        from: msg.from_number,
+                        to: msg.to_number,
+                        body: msg.body,
+                        timestamp: msg.timestamp,
+                        isOutgoing: msg.from_number === 'me'
+                    }))
+                })
+            } catch (error) {
+                console.error('❌ Error retrieving conversation:', error)
+                res.status(500).json({ error: 'Failed to retrieve conversation' })
+            }
+        });
+
+        // Force session update endpoint (temporary for testing)
+        this.app.post('/api/force-session-update', (req, res) => {
+            try {
+                const { sessionId, status, phoneNumber } = req.body
+
+                const session = this.sessions.get(sessionId)
+                if (session) {
+                    session.status = status
+                    session.phoneNumber = phoneNumber
+                    this.sessions.set(sessionId, session)
+
+                    // Update database
+                    this.db.prepare(`
+                        UPDATE whatsapp_sessions
+                        SET status = ?, phone_number = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    `).run(status, phoneNumber, sessionId)
+
+                    // Broadcast update
+                    this.broadcastSessionsUpdate()
+
+                    console.log(`🔄 Force updated session ${sessionId} to status: ${status}`)
+                    res.json({ success: true, message: 'Session updated successfully' })
+                } else {
+                    res.status(404).json({ error: 'Session not found' })
+                }
+            } catch (error) {
+                console.error('❌ Error force updating session:', error)
+                res.status(500).json({ error: 'Failed to update session' })
+            }
+        });
+
+        this.app.get('/api/database/contacts', (req, res) => {
+            try {
+                const stmt = this.db.prepare('SELECT * FROM contacts ORDER BY name ASC');
+                const contacts = stmt.all();
+                console.log(`📊 Retrieved ${contacts.length} contacts from database`);
+                res.json(contacts);
+            } catch (error) {
+                console.error('❌ Error retrieving contacts from database:', error);
+                res.status(500).json({ error: 'Failed to retrieve contacts' });
+            }
+        });
+
+        // Get contacts with enhanced sync
+        this.app.get('/api/contacts/:sessionId', async (req, res) => {
+            const { sessionId } = req.params;
+
+            if (!this.clients.has(sessionId)) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Session not found'
+                });
+            }
+
+            const client = this.clients.get(sessionId);
+
+            try {
+                console.log(`📞 Fetching contacts for session: ${sessionId}`);
                 const contacts = await client.getContacts();
-                const formattedContacts = contacts.map(contact => ({
-                    id: contact.id._serialized,
-                    name: contact.name || contact.pushname || 'Unknown',
-                    number: contact.number,
-                    isGroup: contact.isGroup,
-                    profilePicUrl: contact.profilePicUrl
+
+                const formattedContacts = await Promise.all(contacts.map(async (contact) => {
+                    let profilePicUrl = null;
+                    let isOnline = false;
+                    let lastSeen = null;
+
+                    try {
+                        // Try to get profile picture
+                        profilePicUrl = await contact.getProfilePicUrl();
+                    } catch (picError) {
+                        console.log(`⚠️ No profile pic for ${contact.number}`);
+                    }
+
+                    try {
+                        // Get contact status if available
+                        const chat = await contact.getChat();
+                        if (chat) {
+                            isOnline = chat.isOnline || false;
+                            lastSeen = chat.lastSeen || null;
+                        }
+                    } catch (statusError) {
+                        console.log(`⚠️ No status info for ${contact.number}`);
+                    }
+
+                    return {
+                        id: contact.id._serialized,
+                        name: contact.name || contact.pushname || contact.formattedName || 'Unknown',
+                        number: contact.number,
+                        isGroup: contact.isGroup,
+                        profilePicUrl,
+                        isOnline,
+                        lastSeen,
+                        isMyContact: contact.isMyContact || false,
+                        isWAContact: contact.isWAContact || false
+                    };
                 }));
-                
+
+                console.log(`✅ Formatted ${formattedContacts.length} contacts with enhanced data`);
+
                 res.json({
                     success: true,
                     contacts: formattedContacts
                 });
+
+                // Emit real-time update
+                this.io.emit('contacts_updated', {
+                    sessionId,
+                    contacts: formattedContacts
+                });
+
             } catch (error) {
+                console.error(`❌ Error fetching contacts for ${sessionId}:`, error);
                 res.status(500).json({
                     success: false,
                     message: 'Failed to get contacts',
@@ -314,10 +1338,10 @@ class WhatsAppManager {
             }
         });
 
-        // Get chats
+        // Get chats with enhanced contact info
         this.app.get('/api/chats/:sessionId', async (req, res) => {
             const { sessionId } = req.params;
-            
+
             if (!this.clients.has(sessionId)) {
                 return res.status(404).json({
                     success: false,
@@ -326,26 +1350,83 @@ class WhatsAppManager {
             }
 
             const client = this.clients.get(sessionId);
-            
+
             try {
+                console.log(`💬 Fetching chats for session: ${sessionId}`);
                 const chats = await client.getChats();
-                const formattedChats = chats.map(chat => ({
-                    id: chat.id._serialized,
-                    name: chat.name,
-                    isGroup: chat.isGroup,
-                    unreadCount: chat.unreadCount,
-                    lastMessage: chat.lastMessage ? {
-                        body: chat.lastMessage.body,
-                        timestamp: chat.lastMessage.timestamp,
-                        from: chat.lastMessage.from
-                    } : null
+
+                const formattedChats = await Promise.all(chats.map(async (chat) => {
+                    let contactInfo = null;
+
+                    try {
+                        // Get contact information
+                        const contact = await chat.getContact();
+                        let profilePicUrl = null;
+
+                        try {
+                            profilePicUrl = await contact.getProfilePicUrl();
+                        } catch (picError) {
+                            // Profile pic not available
+                        }
+
+                        contactInfo = {
+                            id: contact.id._serialized,
+                            name: contact.name || contact.pushname || contact.formattedName || chat.name || 'Unknown',
+                            number: contact.number,
+                            profilePicUrl,
+                            isGroup: contact.isGroup,
+                            isOnline: false, // Will be updated in real-time
+                            lastSeen: null,
+                            isMyContact: contact.isMyContact || false,
+                            isWAContact: contact.isWAContact || false
+                        };
+                    } catch (contactError) {
+                        console.log(`⚠️ Could not get contact info for chat: ${chat.id._serialized}`);
+                        contactInfo = {
+                            id: chat.id._serialized,
+                            name: chat.name || 'Unknown',
+                            number: chat.id._serialized.split('@')[0],
+                            profilePicUrl: null,
+                            isGroup: chat.isGroup,
+                            isOnline: false,
+                            lastSeen: null,
+                            isMyContact: false,
+                            isWAContact: false
+                        };
+                    }
+
+                    return {
+                        id: chat.id._serialized,
+                        contact: contactInfo,
+                        unreadCount: chat.unreadCount,
+                        lastMessage: chat.lastMessage ? {
+                            body: chat.lastMessage.body,
+                            timestamp: chat.lastMessage.timestamp,
+                            from: chat.lastMessage.from
+                        } : null,
+                        isGroup: chat.isGroup,
+                        timestamp: chat.timestamp || Date.now()
+                    };
                 }));
-                
+
+                // Sort by timestamp (most recent first)
+                formattedChats.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+                console.log(`✅ Formatted ${formattedChats.length} chats with contact info`);
+
                 res.json({
                     success: true,
-                    chats: formattedChats
+                    conversations: formattedChats
                 });
+
+                // Emit real-time update
+                this.io.emit('conversations_updated', {
+                    sessionId,
+                    conversations: formattedChats
+                });
+
             } catch (error) {
+                console.error(`❌ Error fetching chats for ${sessionId}:`, error);
                 res.status(500).json({
                     success: false,
                     message: 'Failed to get chats',
@@ -359,46 +1440,233 @@ class WhatsAppManager {
         this.io.on('connection', (socket) => {
             console.log('🔌 Client connected:', socket.id);
 
+            // Send current sessions immediately on connection
+            const sessionsList = Array.from(this.sessions.values()).map(session => ({
+                id: session.id,
+                name: session.name,
+                status: session.status,
+                phone_number: session.phoneNumber,
+                qr_code: session.qrCode,
+                is_active: session.isActive,
+                created_at: session.createdAt
+            }));
+            socket.emit('sessions_updated', sessionsList);
+
             socket.on('disconnect', () => {
                 console.log('❌ Client disconnected:', socket.id);
             });
 
-            // Send current data to new client
-            socket.emit('sessions_updated', Array.from(this.sessions.values()));
+            // Throttled data requests to prevent spam
+            let lastRequestTime = {};
+            const REQUEST_THROTTLE = 2000; // 2 seconds
 
-            // Handle data requests
             socket.on('get_sessions', () => {
+                const now = Date.now();
+                if (lastRequestTime.sessions && now - lastRequestTime.sessions < REQUEST_THROTTLE) {
+                    return; // Ignore rapid requests
+                }
+                lastRequestTime.sessions = now;
+
                 console.log('📡 Client requested sessions update');
-                socket.emit('sessions_updated', Array.from(this.sessions.values()));
+                const sessionsList = Array.from(this.sessions.values()).map(session => ({
+                    id: session.id,
+                    name: session.name,
+                    status: session.status,
+                    phone_number: session.phoneNumber,
+                    qr_code: session.qrCode,
+                    is_active: session.isActive,
+                    created_at: session.createdAt
+                }));
+                socket.emit('sessions_updated', sessionsList);
             });
 
-            socket.on('get_contacts', () => {
-                console.log('📞 Client requested contacts update');
-                // Return empty array for now to avoid blocking
-                socket.emit('contacts_updated', []);
+            socket.on('get_contacts', async (data) => {
+                const now = Date.now();
+                if (lastRequestTime.contacts && now - lastRequestTime.contacts < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.contacts = now;
+
+                const { sessionId } = data || {};
+                if (!sessionId || !this.clients.has(sessionId)) {
+                    socket.emit('contacts_updated', []);
+                    return;
+                }
+
+                try {
+                    console.log(`📞 Socket request for contacts: ${sessionId}`);
+                    const client = this.clients.get(sessionId);
+                    const contacts = await client.getContacts();
+
+                    const formattedContacts = await Promise.all(contacts.map(async (contact) => {
+                        let profilePicUrl = null;
+                        let isOnline = false;
+                        let lastSeen = null;
+
+                        try {
+                            profilePicUrl = await contact.getProfilePicUrl();
+                        } catch (picError) {
+                            // Profile pic not available
+                        }
+
+                        try {
+                            const chat = await contact.getChat();
+                            if (chat) {
+                                isOnline = chat.isOnline || false;
+                                lastSeen = chat.lastSeen || null;
+                            }
+                        } catch (statusError) {
+                            // Status not available
+                        }
+
+                        return {
+                            id: contact.id._serialized,
+                            name: contact.name || contact.pushname || contact.formattedName || 'Unknown',
+                            number: contact.number,
+                            isGroup: contact.isGroup,
+                            profilePicUrl,
+                            isOnline,
+                            lastSeen,
+                            isMyContact: contact.isMyContact || false,
+                            isWAContact: contact.isWAContact || false
+                        };
+                    }));
+
+                    socket.emit('contacts_updated', {
+                        sessionId,
+                        contacts: formattedContacts
+                    });
+                } catch (error) {
+                    console.error('Error getting contacts via socket:', error);
+                    socket.emit('contacts_updated', []);
+                }
             });
 
-            socket.on('get_messages', () => {
-                console.log('💬 Client requested messages update');
-                // Return empty array for now to avoid blocking
-                socket.emit('messages_updated', []);
+            socket.on('get_conversations', async (data) => {
+                const now = Date.now();
+                if (lastRequestTime.conversations && now - lastRequestTime.conversations < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.conversations = now;
+
+                const { sessionId } = data || {};
+                if (!sessionId || !this.clients.has(sessionId)) {
+                    socket.emit('conversations_updated', []);
+                    return;
+                }
+
+                try {
+                    console.log(`💬 Socket request for conversations: ${sessionId}`);
+                    const client = this.clients.get(sessionId);
+                    const chats = await client.getChats();
+
+                    const formattedChats = await Promise.all(chats.map(async (chat) => {
+                        let contactInfo = null;
+
+                        try {
+                            const contact = await chat.getContact();
+                            let profilePicUrl = null;
+
+                            try {
+                                profilePicUrl = await contact.getProfilePicUrl();
+                            } catch (picError) {
+                                // Profile pic not available
+                            }
+
+                            contactInfo = {
+                                id: contact.id._serialized,
+                                name: contact.name || contact.pushname || contact.formattedName || chat.name || 'Unknown',
+                                number: contact.number,
+                                profilePicUrl,
+                                isGroup: contact.isGroup,
+                                isOnline: false,
+                                lastSeen: null,
+                                isMyContact: contact.isMyContact || false,
+                                isWAContact: contact.isWAContact || false
+                            };
+                        } catch (contactError) {
+                            contactInfo = {
+                                id: chat.id._serialized,
+                                name: chat.name || 'Unknown',
+                                number: chat.id._serialized.split('@')[0],
+                                profilePicUrl: null,
+                                isGroup: chat.isGroup,
+                                isOnline: false,
+                                lastSeen: null,
+                                isMyContact: false,
+                                isWAContact: false
+                            };
+                        }
+
+                        return {
+                            id: chat.id._serialized,
+                            contact: contactInfo,
+                            unreadCount: chat.unreadCount,
+                            lastMessage: chat.lastMessage ? {
+                                body: chat.lastMessage.body,
+                                timestamp: chat.lastMessage.timestamp,
+                                from: chat.lastMessage.from
+                            } : null,
+                            isGroup: chat.isGroup,
+                            timestamp: chat.timestamp || Date.now()
+                        };
+                    }));
+
+                    formattedChats.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+                    socket.emit('conversations_updated', {
+                        sessionId,
+                        conversations: formattedChats
+                    });
+                } catch (error) {
+                    console.error('Error getting conversations via socket:', error);
+                    socket.emit('conversations_updated', []);
+                }
+            });
+
+            socket.on('get_messages', async () => {
+                const now = Date.now();
+                if (lastRequestTime.messages && now - lastRequestTime.messages < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.messages = now;
+
+                try {
+                    const messages = await this.getAllMessages();
+                    console.log(`📨 Sending ${messages.length} messages to client`);
+                    socket.emit('messages_updated', messages);
+                } catch (error) {
+                    console.error('Error getting messages:', error);
+                    socket.emit('messages_updated', []);
+                }
             });
 
             socket.on('get_templates', () => {
-                console.log('📝 Client requested templates update');
-                // Return empty array for now to avoid blocking
+                const now = Date.now();
+                if (lastRequestTime.templates && now - lastRequestTime.templates < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.templates = now;
                 socket.emit('templates_updated', []);
             });
 
             socket.on('get_campaigns', () => {
-                console.log('📋 Client requested campaigns update');
-                // Return empty array for now to avoid blocking
+                const now = Date.now();
+                if (lastRequestTime.campaigns && now - lastRequestTime.campaigns < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.campaigns = now;
                 socket.emit('campaigns_updated', []);
             });
 
             socket.on('get_analytics', () => {
+                const now = Date.now();
+                if (lastRequestTime.analytics && now - lastRequestTime.analytics < REQUEST_THROTTLE) {
+                    return;
+                }
+                lastRequestTime.analytics = now;
+
                 console.log('📊 Client requested analytics update');
-                // Return basic analytics for now to avoid blocking
                 const sessions = Array.from(this.sessions.values());
                 const analytics = {
                     totalSessions: sessions.length,
@@ -453,6 +1721,94 @@ class WhatsAppManager {
         console.log(`📡 Broadcasting sessions update to all clients: ${sessions.length} sessions`);
     }
 
+    // Sync all chats from WhatsApp
+    async syncAllChats(sessionId, client) {
+        try {
+            console.log(`🔄 Starting chat sync for session: ${sessionId}`);
+
+            const chats = await client.getChats();
+            console.log(`📱 Found ${chats.length} chats to sync`);
+
+            let syncedCount = 0;
+            for (const chat of chats.slice(0, 20)) { // Limit to first 20 chats for performance
+                try {
+                    // Get recent messages from this chat
+                    const messages = await chat.fetchMessages({ limit: 10 });
+                    console.log(`💬 Syncing ${messages.length} messages from chat: ${chat.name || chat.id._serialized}`);
+
+                    for (const message of messages) {
+                        try {
+                            // Check if message already exists
+                            const existingStmt = this.db.prepare('SELECT id FROM messages WHERE whatsapp_message_id = ? AND session_id = ?');
+                            const existing = existingStmt.get(message.id._serialized, sessionId);
+
+                            if (!existing) {
+                                // Get contact info
+                                let contactInfo = null;
+                                try {
+                                    const contact = await message.getContact();
+                                    contactInfo = {
+                                        name: contact.name || contact.pushname || contact.formattedName || null,
+                                        profilePicUrl: null
+                                    };
+
+                                    // Try to get profile picture
+                                    try {
+                                        contactInfo.profilePicUrl = await contact.getProfilePicUrl();
+                                    } catch (picError) {
+                                        // Profile pic not available
+                                    }
+                                } catch (contactError) {
+                                    // Contact info not available
+                                }
+
+                                // Save new message
+                                const timestamp = message.timestamp * 1000;
+                                const now = new Date().toISOString();
+
+                                const stmt = this.db.prepare(`
+                                    INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at, contact_name, profile_pic_url)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                `);
+
+                                const dbMessageId = `sync_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+                                stmt.run(
+                                    dbMessageId,
+                                    sessionId,
+                                    message.id._serialized,
+                                    message.from,
+                                    message.to,
+                                    message.body || '',
+                                    message.type || 'text',
+                                    message.isGroupMsg ? 1 : 0,
+                                    message.author || null,
+                                    timestamp,
+                                    now,
+                                    contactInfo?.name || null,
+                                    contactInfo?.profilePicUrl || null
+                                );
+
+                                syncedCount++;
+                            }
+                        } catch (messageError) {
+                            console.error('❌ Error syncing message:', messageError.message);
+                        }
+                    }
+                } catch (chatError) {
+                    console.error('❌ Error syncing chat:', chatError.message);
+                }
+            }
+
+            console.log(`✅ Chat sync completed for session ${sessionId}: ${syncedCount} new messages synced`);
+
+            // Emit sync completion event
+            this.io.emit('chats_synced', { sessionId, syncedCount, totalChats: chats.length });
+
+        } catch (error) {
+            console.error(`❌ Error syncing chats for session ${sessionId}:`, error);
+        }
+    }
+
     createWhatsAppClient(sessionId, sessionName) {
         const client = new Client({
             authStrategy: new LocalAuth({
@@ -474,6 +1830,9 @@ class WhatsAppManager {
             }
         });
 
+        // Store client
+        this.clients.set(sessionId, client);
+
         // Store session info
         this.sessions.set(sessionId, {
             id: sessionId,
@@ -481,43 +1840,106 @@ class WhatsAppManager {
             status: 'initializing',
             qrCode: null,
             phoneNumber: null,
-            createdAt: new Date().toISOString()
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         });
 
         // QR Code event
-        client.on('qr', (qr) => {
-            console.log(`QR Code for session ${sessionId}:`, qr);
+        client.on('qr', async (qr) => {
+            console.log(`📱 QR Code generated for session ${sessionId}`);
 
             // Update session with QR code
             const session = this.sessions.get(sessionId);
-            session.qrCode = qr;
-            session.status = 'qr_code';
+            if (session) {
+                session.qrCode = qr;
+                session.status = 'qr_code';
+                session.updatedAt = new Date().toISOString();
 
-            // Emit QR code to frontend
-            this.io.emit('qr_code', { sessionId, qrCode: qr });
+                // Save QR code to database
+                try {
+                    const stmt = this.db.prepare(`
+                        UPDATE whatsapp_sessions
+                        SET status = ?, qr_code = ?, updated_at = ?
+                        WHERE id = ?
+                    `);
+                    stmt.run('qr_code', qr, new Date().toISOString(), sessionId);
+                } catch (error) {
+                    console.error(`❌ Failed to save QR code to database for ${sessionId}:`, error);
+                }
 
-            // Broadcast sessions update
-            this.broadcastSessionsUpdate();
+                // Emit QR code to frontend
+                this.io.emit('qr_code', { sessionId, qrCode: qr });
+
+                // Broadcast sessions update
+                this.broadcastSessionsUpdate();
+            }
         });
 
         // Ready event
-        client.on('ready', () => {
-            console.log(`WhatsApp client ${sessionId} is ready!`);
+        client.on('ready', async () => {
+            console.log(`✅ WhatsApp client ${sessionId} is ready!`);
 
             const session = this.sessions.get(sessionId);
-            session.status = 'ready';
-            session.phoneNumber = client.info.wid.user;
-            session.qrCode = null;
+            if (session) {
+                session.status = 'ready';
+                session.phoneNumber = client.info.wid.user;
+                session.qrCode = null;
+                session.isActive = true;
+                session.updatedAt = new Date().toISOString();
 
-            this.io.emit('client_ready', { sessionId, phoneNumber: client.info.wid.user });
+                // Save session to database
+                try {
+                    const stmt = this.db.prepare(`
+                        UPDATE whatsapp_sessions
+                        SET status = ?, phone_number = ?, qr_code = ?, is_active = ?, updated_at = ?
+                        WHERE id = ?
+                    `);
+                    stmt.run('ready', client.info.wid.user, null, 1, new Date().toISOString(), sessionId);
+                    console.log(`✅ Session ${sessionId} saved to database as ready`);
+                } catch (error) {
+                    console.error(`❌ Database save error for session ${sessionId}:`, error);
+                }
 
-            // Broadcast sessions update
-            this.broadcastSessionsUpdate();
+                this.io.emit('client_ready', { sessionId, phoneNumber: client.info.wid.user });
+
+                // Broadcast sessions update
+                this.broadcastSessionsUpdate();
+
+                // Auto-sync all chats when ready
+                console.log(`🔄 Auto-syncing all chats for session: ${sessionId}`);
+                setTimeout(() => {
+                    this.syncAllChats(sessionId, client);
+                }, 2000); // Wait 2 seconds for client to be fully ready
+            }
         });
 
         // Message event
         client.on('message', async (message) => {
             console.log(`📨 New message received in session ${sessionId}:`, message.body);
+
+            // Get contact info for profile photo and name
+            let contactInfo = null;
+            try {
+                const contact = await message.getContact();
+                contactInfo = {
+                    name: contact.name || contact.pushname || contact.formattedName || null,
+                    profilePicUrl: null,
+                    isMyContact: contact.isMyContact || false,
+                    isWAContact: contact.isWAContact || false
+                };
+
+                // Try to get profile picture
+                try {
+                    contactInfo.profilePicUrl = await contact.getProfilePicUrl();
+                } catch (picError) {
+                    console.log('⚠️ Could not get profile picture for:', contact.number);
+                }
+
+                console.log('👤 Contact info:', contactInfo);
+            } catch (contactError) {
+                console.log('⚠️ Could not get contact info:', contactError.message);
+            }
 
             const messageData = {
                 sessionId,
@@ -528,8 +1950,42 @@ class WhatsAppManager {
                 timestamp: message.timestamp,
                 type: message.type,
                 isGroupMsg: message.isGroupMsg,
-                author: message.author
+                author: message.author,
+                contactName: contactInfo?.name || null,
+                profilePicUrl: contactInfo?.profilePicUrl || null
             };
+
+            // Save incoming message to database
+            try {
+                const timestamp = message.timestamp * 1000; // Convert to milliseconds
+                const now = new Date().toISOString();
+
+                const stmt = this.db.prepare(`
+                    INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at, contact_name, profile_pic_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+
+                const dbMessageId = `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+                stmt.run(
+                    dbMessageId,
+                    sessionId,
+                    message.id._serialized,
+                    message.from,
+                    message.to,
+                    message.body,
+                    message.type,
+                    message.isGroupMsg ? 1 : 0,
+                    message.author,
+                    timestamp,
+                    now,
+                    contactInfo?.name || null,
+                    contactInfo?.profilePicUrl || null
+                );
+
+                console.log(`📝 Incoming message saved to database: ${dbMessageId}`);
+            } catch (dbError) {
+                console.error('❌ Failed to save incoming message to database:', dbError);
+            }
 
             // Emit message event
             this.io.emit('new_message', messageData);
@@ -558,27 +2014,94 @@ class WhatsAppManager {
             } catch (error) {
                 console.error(`❌ Error getting chat info for message:`, error);
             }
+
+            // Auto-sync contact profile if not already synced
+            this.autoSyncContactProfile(sessionId, message.from);
+        });
+
+        // Auto-sync contact profile photos
+        client.on('contact_changed', async (contact) => {
+            console.log(`👤 Contact changed: ${contact.id._serialized}`);
+            this.autoSyncContactProfile(sessionId, contact.id._serialized);
+        });
+
+        // Listen for presence updates (online/offline status)
+        client.on('presence_update', async (presence) => {
+            console.log(`👁️ Presence update: ${presence.id._serialized} - ${presence.state}`);
+
+            const presenceData = {
+                sessionId,
+                contactId: presence.id._serialized,
+                isOnline: presence.state === 'available',
+                lastSeen: presence.lastSeen || null,
+                timestamp: Date.now()
+            };
+
+            // Emit presence update to all clients
+            this.io.emit('presence_update', presenceData);
+        });
+
+        // Listen for typing indicators
+        client.on('typing', async (chat, isTyping) => {
+            console.log(`⌨️ Typing status: ${chat.id._serialized} - ${isTyping}`);
+
+            const typingData = {
+                sessionId,
+                chatId: chat.id._serialized,
+                isTyping,
+                timestamp: Date.now()
+            };
+
+            this.io.emit('typing_status', typingData);
         });
 
         // Authentication failure
-        client.on('auth_failure', (msg) => {
+        client.on('auth_failure', async (msg) => {
             console.error(`Authentication failed for session ${sessionId}:`, msg);
 
             const session = this.sessions.get(sessionId);
-            session.status = 'auth_failure';
+            if (session) {
+                session.status = 'auth_failure';
+                session.updatedAt = new Date().toISOString();
 
-            this.io.emit('auth_failure', { sessionId, message: msg });
+                // Save to database
+                try {
+                    const stmt = this.db.prepare(`
+                        UPDATE whatsapp_sessions
+                        SET status = ?, qr_code = ?, updated_at = ?
+                        WHERE id = ?
+                    `);
+                    stmt.run('auth_failure', null, new Date().toISOString(), sessionId);
+                } catch (error) {
+                    console.error(`❌ Failed to save auth failure to database for ${sessionId}:`, error);
+                }
 
-            // Broadcast sessions update
-            this.broadcastSessionsUpdate();
+                this.io.emit('auth_failure', { sessionId, message: msg });
+
+                // Broadcast sessions update
+                this.broadcastSessionsUpdate();
+            }
         });
 
         // Disconnected event
-        client.on('disconnected', (reason) => {
+        client.on('disconnected', async (reason) => {
             console.log(`Client ${sessionId} disconnected:`, reason);
 
             const session = this.sessions.get(sessionId);
             session.status = 'disconnected';
+
+            // Update session in database
+            try {
+                const stmt = this.db.prepare(`
+                    UPDATE whatsapp_sessions
+                    SET status = ?, is_active = ?, updated_at = ?
+                    WHERE id = ?
+                `);
+                stmt.run('disconnected', 0, new Date().toISOString(), sessionId);
+                console.log(`✅ Session ${sessionId} marked as disconnected in database`);
+            } catch (error) {
+                console.error(`❌ Database update error for session ${sessionId}:`, error);
+            }
 
             this.io.emit('client_disconnected', { sessionId, reason });
 
@@ -640,37 +2163,36 @@ class WhatsAppManager {
         try {
             console.log('🔄 Restoring sessions from database...');
 
-            // Get sessions from database
-            const apiUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.230:3005';
-            const response = await fetch(`${apiUrl}/api/database/sessions`);
-            const data = await response.json();
+            // Get sessions from database directly
+            const stmt = this.db.prepare('SELECT * FROM whatsapp_sessions WHERE is_active = 1');
+            const sessions = stmt.all();
 
-            if (data.success && data.sessions) {
-                console.log(`📊 Found ${data.sessions.length} sessions in database`);
+            console.log(`📊 Found ${sessions.length} sessions in database`);
 
-                for (const session of data.sessions) {
-                    if (session.status === 'ready' && session.is_active) {
-                        // Check if session already exists to prevent duplicates
-                        if (this.sessions.has(session.id) || this.clients.has(session.id)) {
-                            console.log(`⚠️ Session ${session.name} (${session.id}) already exists, skipping...`);
-                            continue;
-                        }
-
-                        console.log(`🔄 Restoring session: ${session.name} (${session.id})`);
-
-                        // Create session entry
-                        this.sessions.set(session.id, {
-                            id: session.id,
-                            name: session.name,
-                            status: 'initializing',
-                            qrCode: null,
-                            phoneNumber: session.phone_number,
-                            createdAt: session.created_at
-                        });
-
-                        // Create WhatsApp client
-                        this.createWhatsAppClient(session.id, session.name);
+            for (const session of sessions) {
+                if (session.status === 'ready' && session.is_active) {
+                    // Check if session already exists to prevent duplicates
+                    if (this.sessions.has(session.id) || this.clients.has(session.id)) {
+                        console.log(`⚠️ Session ${session.name} (${session.id}) already exists, skipping...`);
+                        continue;
                     }
+
+                    console.log(`🔄 Restoring session: ${session.name} (${session.id})`);
+
+                    // Create session entry with database status
+                    this.sessions.set(session.id, {
+                        id: session.id,
+                        name: session.name,
+                        status: session.status || 'initializing',
+                        qrCode: session.qr_code,
+                        phoneNumber: session.phone_number,
+                        isActive: Boolean(session.is_active),
+                        createdAt: session.created_at,
+                        updatedAt: session.updated_at
+                    });
+
+                    // Create WhatsApp client
+                    this.createWhatsAppClient(session.id, session.name);
                 }
             }
         } catch (error) {
@@ -680,9 +2202,10 @@ class WhatsAppManager {
 
     // Helper methods for real-time data
     getApiBaseUrl() {
-        // Auto-detect environment
-        const hostname = process.env.NODE_ENV === 'production' ? '100.115.3.36' : 'localhost';
-        return `http://${hostname}:3005`;
+        // Use the same port as the main server
+        const hostname = process.env.NODE_ENV === 'production' ? '192.168.1.230' : 'localhost';
+        const port = PORTS.BACKEND; // Use the same port as this server
+        return `http://${hostname}:${port}`;
     }
 
     async getAllContacts() {
@@ -746,16 +2269,71 @@ class WhatsAppManager {
         this.io.emit(event, data);
     }
 
-    start(port = 3001) {
-        const host = process.env.HOST || '192.168.1.230';
+    // Auto-sync contact profile photos and info
+    async autoSyncContactProfile(sessionId, contactId) {
+        if (!this.clients.has(sessionId)) return;
+
+        try {
+            const client = this.clients.get(sessionId);
+            const contact = await client.getContactById(contactId);
+
+            if (contact) {
+                let profilePicUrl = null;
+                let isOnline = false;
+                let lastSeen = null;
+
+                try {
+                    profilePicUrl = await contact.getProfilePicUrl();
+                } catch (picError) {
+                    console.log(`⚠️ No profile pic for ${contactId}`);
+                }
+
+                try {
+                    const chat = await contact.getChat();
+                    if (chat) {
+                        isOnline = chat.isOnline || false;
+                        lastSeen = chat.lastSeen || null;
+                    }
+                } catch (statusError) {
+                    console.log(`⚠️ No status info for ${contactId}`);
+                }
+
+                const contactData = {
+                    sessionId,
+                    contact: {
+                        id: contact.id._serialized,
+                        name: contact.name || contact.pushname || contact.formattedName || 'Unknown',
+                        number: contact.number,
+                        profilePicUrl,
+                        isGroup: contact.isGroup,
+                        isOnline,
+                        lastSeen,
+                        isMyContact: contact.isMyContact || false,
+                        isWAContact: contact.isWAContact || false
+                    }
+                };
+
+                // Emit contact update
+                this.io.emit('contact_profile_updated', contactData);
+                console.log(`👤 Profile synced for ${contactId}`);
+            }
+        } catch (error) {
+            console.error(`❌ Error syncing contact profile for ${contactId}:`, error);
+        }
+    }
+
+    start(port = PORTS.BACKEND) {
+        const host = process.env.HOST || HOST;
         this.server.listen(port, host, () => {
-            console.log(`WhatsApp server running on http://${host}:${port}`);
+            console.log(`🚀 WhatsApp server running on http://${host}:${port}`);
+            console.log(`📡 Frontend URL: ${URLS.FRONTEND}`);
+            console.log(`🔗 API URL: ${URLS.API}`);
         });
     }
 }
 
 // Start the server
 const whatsappManager = new WhatsAppManager();
-whatsappManager.start(process.env.WHATSAPP_SERVER_PORT || 3001);
+whatsappManager.start(process.env.WHATSAPP_SERVER_PORT || PORTS.BACKEND);
 
 module.exports = WhatsAppManager;

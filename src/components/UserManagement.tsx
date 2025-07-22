@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { authServiceInstance, User } from '@/lib/auth'
 import {
   Users,
   UserPlus,
@@ -19,7 +20,8 @@ import {
   Crown,
   Star,
   User as UserIcon,
-  Settings
+  Settings,
+  AlertTriangle
 } from 'lucide-react'
 import { LocalStorage, LocalUser } from '@/lib/local-storage'
 import Card, { CardHeader, CardContent } from './ui/Card'
@@ -45,14 +47,25 @@ const roleIcons = {
 interface UserFormData {
   name: string
   email: string
+  password: string
   role: 'admin' | 'manager' | 'agent' | 'viewer'
   department: string
   permissions: string[]
 }
 
+interface Role {
+  id: string
+  name: string
+  description: string
+  permissions: string[]
+  color: string
+  isActive: boolean
+}
+
 export default function UserManagement() {
   const [users, setUsers] = useState<LocalUser[]>([])
   const [filteredUsers, setFilteredUsers] = useState<LocalUser[]>([])
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRole, setSelectedRole] = useState<string>('all')
@@ -63,17 +76,19 @@ export default function UserManagement() {
   const [formData, setFormData] = useState<UserFormData>({
     name: '',
     email: '',
+    password: '',
     role: 'agent',
     department: '',
     permissions: []
   })
 
-  const roles = [
+  // Dynamic roles for filter dropdown
+  const filterRoles = [
     { value: 'all', label: 'All Roles' },
-    { value: 'admin', label: 'Administrator' },
-    { value: 'manager', label: 'Manager' },
-    { value: 'agent', label: 'Agent' },
-    { value: 'viewer', label: 'Viewer' }
+    ...availableRoles.map(role => ({
+      value: role.id,
+      label: role.name
+    }))
   ]
 
   const departments = [
@@ -87,7 +102,38 @@ export default function UserManagement() {
 
   useEffect(() => {
     loadUsers()
+    loadRoles()
   }, [])
+
+  // Auto-refresh data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadUsers()
+      loadRoles()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadRoles = () => {
+    try {
+      const savedRoles = localStorage.getItem('app_roles')
+      if (savedRoles) {
+        const roles = JSON.parse(savedRoles)
+        setAvailableRoles(roles.filter((role: Role) => role.isActive))
+      } else {
+        // Default roles if none exist
+        setAvailableRoles([
+          { id: 'admin', name: 'Administrator', description: 'Full access', permissions: ['*'], color: '#DC2626', isActive: true },
+          { id: 'manager', name: 'Manager', description: 'Management access', permissions: [], color: '#2563EB', isActive: true },
+          { id: 'agent', name: 'Agent', description: 'Basic access', permissions: [], color: '#059669', isActive: true },
+          { id: 'viewer', name: 'Viewer', description: 'Read-only access', permissions: [], color: '#6B7280', isActive: true }
+        ])
+      }
+    } catch (error) {
+      console.error('Error loading roles:', error)
+    }
+  }
 
   useEffect(() => {
     filterUsers()
@@ -96,12 +142,38 @@ export default function UserManagement() {
   const loadUsers = async () => {
     try {
       setLoading(true)
-      const userList = await authService.getUsers()
-      setUsers(userList)
+
+      // Load from localStorage first
+      const savedUsers = localStorage.getItem('app_users')
+      if (savedUsers) {
+        const parsedUsers = JSON.parse(savedUsers)
+        setUsers(parsedUsers)
+
+        // Also sync with authService
+        const usersMap = (authServiceInstance as any).users
+        usersMap.clear()
+        parsedUsers.forEach((user: any) => {
+          usersMap.set(user.id, user)
+        })
+      } else {
+        // Fallback to authService
+        const userList = await authServiceInstance.getUsers()
+        setUsers(userList)
+        saveUsersToStorage(userList)
+      }
     } catch (error) {
       console.error('Error loading users:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const saveUsersToStorage = (usersToSave: any[]) => {
+    try {
+      localStorage.setItem('app_users', JSON.stringify(usersToSave))
+      console.log('Users saved to localStorage:', usersToSave)
+    } catch (error) {
+      console.error('Error saving users to localStorage:', error)
     }
   }
 
@@ -132,19 +204,56 @@ export default function UserManagement() {
 
   const handleCreateUser = async () => {
     try {
-      await authService.register({
-        name: formData.name,
+      // Generate username from email
+      const username = formData.email.split('@')[0]
+
+      // Create user with proper username and password
+      const newUser = {
+        id: `user-${Date.now()}`,
+        username: username,
         email: formData.email,
-        password: 'defaultPassword123', // In real app, generate or ask for password
+        password: formData.password, // Include password field
+        name: formData.name,
         role: formData.role,
-        department: formData.department
-      })
-      
+        department: formData.department,
+        permissions: getDefaultPermissions(formData.role),
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+
+      // Add to current users list
+      const updatedUsers = [...users, newUser]
+      setUsers(updatedUsers)
+
+      // Save to localStorage
+      saveUsersToStorage(updatedUsers)
+
+      // Also add to auth service
+      const usersMap = (authServiceInstance as any).users
+      usersMap.set(newUser.id, newUser)
+
+      console.log('User created and saved:', newUser)
+
       setShowCreateModal(false)
       resetForm()
-      loadUsers()
     } catch (error) {
       console.error('Error creating user:', error)
+    }
+  }
+
+  const getDefaultPermissions = (role: string): string[] => {
+    switch (role) {
+      case 'admin':
+        return ['*']
+      case 'manager':
+        return ['users.read', 'messages.read', 'messages.send', 'analytics.read']
+      case 'agent':
+        return ['messages.read', 'messages.send']
+      case 'viewer':
+        return ['messages.read', 'analytics.read']
+      default:
+        return ['messages.read']
     }
   }
 
@@ -152,18 +261,44 @@ export default function UserManagement() {
     if (!selectedUser) return
 
     try {
-      await authService.updateUser(selectedUser.id, {
+      const updatedUser = {
+        ...selectedUser,
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        department: formData.department,
+        permissions: formData.permissions,
+        updatedAt: new Date().toISOString()
+      }
+
+      // Update password if provided
+      if (formData.password && formData.password.trim() !== '') {
+        updatedUser.password = formData.password
+      }
+
+      // Update in users list
+      const updatedUsers = users.map(user =>
+        user.id === selectedUser.id ? updatedUser : user
+      )
+      setUsers(updatedUsers)
+
+      // Save to localStorage
+      saveUsersToStorage(updatedUsers)
+
+      // Also update in auth service
+      await authServiceInstance.updateUser(selectedUser.id, {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         department: formData.department,
         permissions: formData.permissions
       })
-      
+
+      console.log('User updated and saved:', updatedUser)
+
       setShowEditModal(false)
       setSelectedUser(null)
       resetForm()
-      loadUsers()
     } catch (error) {
       console.error('Error updating user:', error)
     }
@@ -172,8 +307,17 @@ export default function UserManagement() {
   const handleDeleteUser = async (userId: string) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
-        await authService.deleteUser(userId)
-        loadUsers()
+        // Remove from users list
+        const updatedUsers = users.filter(user => user.id !== userId)
+        setUsers(updatedUsers)
+
+        // Save to localStorage
+        saveUsersToStorage(updatedUsers)
+
+        // Also remove from auth service
+        await authServiceInstance.deleteUser(userId)
+
+        console.log('User deleted:', userId)
       } catch (error) {
         console.error('Error deleting user:', error)
       }
@@ -182,10 +326,27 @@ export default function UserManagement() {
 
   const handleToggleUserStatus = async (user: User) => {
     try {
-      await authService.updateUser(user.id, {
+      const updatedUser = {
+        ...user,
+        isActive: !user.isActive,
+        updatedAt: new Date().toISOString()
+      }
+
+      // Update in users list
+      const updatedUsers = users.map(u =>
+        u.id === user.id ? updatedUser : u
+      )
+      setUsers(updatedUsers)
+
+      // Save to localStorage
+      saveUsersToStorage(updatedUsers)
+
+      // Also update in auth service
+      await authServiceInstance.updateUser(user.id, {
         isActive: !user.isActive
       })
-      loadUsers()
+
+      console.log('User status toggled:', updatedUser)
     } catch (error) {
       console.error('Error updating user status:', error)
     }
@@ -196,6 +357,7 @@ export default function UserManagement() {
     setFormData({
       name: user.name,
       email: user.email,
+      password: '', // Empty for security, user can enter new password if needed
       role: user.role,
       department: user.department || '',
       permissions: user.permissions
@@ -204,10 +366,12 @@ export default function UserManagement() {
   }
 
   const resetForm = () => {
+    const defaultRole = availableRoles.length > 0 ? availableRoles[0].id : 'agent'
     setFormData({
       name: '',
       email: '',
-      role: 'agent',
+      password: '',
+      role: defaultRole,
       department: '',
       permissions: []
     })
@@ -243,7 +407,10 @@ export default function UserManagement() {
         </div>
         
         <Button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            loadRoles() // Refresh roles before opening modal
+            setShowCreateModal(true)
+          }}
           icon={<UserPlus size={16} />}
           className="bg-blue-600 hover:bg-blue-700"
         >
@@ -324,7 +491,7 @@ export default function UserManagement() {
               onChange={(e) => setSelectedRole(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {roles.map(role => (
+              {filterRoles.map(role => (
                 <option key={role.value} value={role.value}>{role.label}</option>
               ))}
             </select>
@@ -511,6 +678,14 @@ export default function UserManagement() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Enter email address"
             />
+
+            <Input
+              label="Password"
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              placeholder="Enter password"
+            />
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -521,10 +696,11 @@ export default function UserManagement() {
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="agent">Agent</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Administrator</option>
-                <option value="viewer">Viewer</option>
+                {availableRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
               </select>
             </div>
             
@@ -546,7 +722,7 @@ export default function UserManagement() {
           </Button>
           <Button
             onClick={handleCreateUser}
-            disabled={!formData.name || !formData.email}
+            disabled={!formData.name || !formData.email || !formData.password}
           >
             Create User
           </Button>
@@ -576,7 +752,15 @@ export default function UserManagement() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Enter email address"
             />
-            
+
+            <Input
+              label="Password (Leave blank to keep current)"
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              placeholder="Enter new password"
+            />
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Role
@@ -586,10 +770,11 @@ export default function UserManagement() {
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="agent">Agent</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Administrator</option>
-                <option value="viewer">Viewer</option>
+                {availableRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
               </select>
             </div>
             

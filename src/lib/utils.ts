@@ -48,6 +48,27 @@ export function debounce<T extends (...args: any[]) => any>(
   }
 }
 
+export function getTimeAgo(timestamp: number | string): string {
+  const date = new Date(typeof timestamp === 'string' ? parseInt(timestamp) : timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  
+  if (days > 0) {
+    return `${days} day${days > 1 ? 's' : ''} ago`
+  } else if (hours > 0) {
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  } else if (minutes > 0) {
+    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+  } else {
+    return 'just now'
+  }
+}
+
 export function throttle<T extends (...args: any[]) => any>(
   func: T,
   limit: number
@@ -194,18 +215,7 @@ export function calculatePercentage(value: number, total: number) {
   return Math.round((value / total) * 100)
 }
 
-export function getTimeAgo(timestamp: number | string) {
-  const date = new Date(typeof timestamp === 'string' ? parseInt(timestamp) : timestamp)
-  const now = new Date()
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-  
-  if (diffInSeconds < 60) return 'Just now'
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`
-  
-  return formatDate(timestamp)
-}
+
 
 export function isToday(timestamp: number | string) {
   const date = new Date(typeof timestamp === 'string' ? parseInt(timestamp) : timestamp)

@@ -24,6 +24,8 @@ import {
 import { cn } from '@/lib/utils'
 import LanguageSelector, { useCurrentLocale } from './LanguageSelector'
 import Button from './ui/Button'
+import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/components/PermissionGuard'
 
 interface SidebarProps {
   activeTab: string
@@ -31,17 +33,18 @@ interface SidebarProps {
 }
 
 const tabs = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-blue-500' },
-  { id: 'sessions', label: 'WhatsApp Numbers', icon: Smartphone, color: 'text-green-500' },
-  { id: 'inbox', label: 'Inbox', icon: MessageCircle, color: 'text-purple-500' },
-  { id: 'ultimate-ai', label: 'AI Control Panel', icon: Bot, color: 'text-violet-500' },
-  { id: 'contacts', label: 'Contacts', icon: Users, color: 'text-orange-500' },
-  { id: 'bulk', label: 'Bulk Messaging', icon: Megaphone, color: 'text-red-500' },
-  { id: 'templates', label: 'Templates', icon: FileText, color: 'text-emerald-500' },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3, color: 'text-indigo-500' },
-  { id: 'users', label: 'User Management', icon: Shield, color: 'text-cyan-500' },
-  { id: 'roles', label: 'Roles & Permissions', icon: UserCog, color: 'text-teal-500' },
-  { id: 'api', label: 'API & Webhooks', icon: Key, color: 'text-pink-500' }
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-blue-500', permission: 'dashboard.view' },
+  { id: 'sessions', label: 'WhatsApp Numbers', icon: Smartphone, color: 'text-green-500', permission: 'sessions.view' },
+  { id: 'inbox', label: 'Inbox', icon: MessageCircle, color: 'text-purple-500', permission: 'inbox.view' },
+  { id: 'ultimate-ai', label: 'AI Control Panel', icon: Bot, color: 'text-violet-500', permission: 'ai.view' },
+  { id: 'contacts', label: 'Contacts', icon: Users, color: 'text-orange-500', permission: 'contacts.view' },
+  { id: 'bulk', label: 'Bulk Messaging', icon: Megaphone, color: 'text-red-500', permission: 'bulk.view' },
+  { id: 'templates', label: 'Templates', icon: FileText, color: 'text-emerald-500', permission: 'templates.view' },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3, color: 'text-indigo-500', permission: 'analytics.view' },
+  { id: 'users', label: 'User Management', icon: Shield, color: 'text-cyan-500', permission: 'users.view' },
+  { id: 'roles', label: 'Roles & Permissions', icon: UserCog, color: 'text-teal-500', permission: 'roles.view' },
+  { id: 'credentials', label: 'Login Credentials', icon: Key, color: 'text-purple-500', permission: 'credentials.view' },
+  { id: 'api', label: 'API & Webhooks', icon: Key, color: 'text-pink-500', permission: 'api.view' }
 ]
 
 const bottomTabs = [
@@ -52,6 +55,14 @@ const bottomTabs = [
 export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const currentLocale = useCurrentLocale()
+  const { logout, user } = useAuth()
+  const { hasPermission } = usePermissions()
+
+  // Filter tabs based on user permissions
+  const visibleTabs = tabs.filter(tab => {
+    if (!tab.permission) return true
+    return hasPermission(tab.permission)
+  })
 
   return (
     <motion.div
@@ -268,10 +279,51 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
         </div>
       </div>
 
+      {/* User Info Section */}
+      <div className="px-6 py-4 border-b border-gray-100">
+        <AnimatePresence>
+          {!isCollapsed && user && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-center space-x-3 p-3 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl"
+            >
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user.name}
+                </p>
+                <p className="text-xs text-emerald-600 capitalize">
+                  {user.role}
+                </p>
+              </div>
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Collapsed User Avatar */}
+        {isCollapsed && user && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex justify-center"
+          >
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-xs relative">
+              {user.name.charAt(0).toUpperCase()}
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
       {/* Navigation with Enhanced Custom Scrollbar */}
       <nav className="sidebar-nav flex-1 min-h-0 px-4 py-6 space-y-2 overflow-y-auto overflow-x-hidden"
            style={{ maxHeight: 'calc(100vh - 200px)' }}>
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
           
@@ -451,6 +503,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
         {/* Enhanced Logout Button */}
         <motion.button
+          onClick={logout}
           whileHover={{
             scale: 1.02,
             x: isCollapsed ? 2 : 0

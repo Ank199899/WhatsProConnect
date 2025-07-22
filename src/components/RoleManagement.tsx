@@ -19,32 +19,44 @@ import {
   CheckCircle,
   XCircle,
   Crown,
-  Key
+  Key,
+  Save,
+  X
 } from 'lucide-react'
 import Button from './ui/Button'
+import Card, { CardHeader, CardContent } from './ui/Card'
+import Input from './ui/Input'
+import Modal, { ModalHeader, ModalBody, ModalFooter } from './ui/Modal'
+import {
+  AVAILABLE_PERMISSIONS,
+  PERMISSION_CATEGORIES,
+  DEFAULT_ROLE_PERMISSIONS,
+  getPermissionsByCategory,
+  Permission
+} from '@/lib/permissions'
 import { useRealTime, useRealTimeData } from '@/contexts/RealTimeContext'
-
-interface Permission {
-  id: string
-  name: string
-  description: string
-  category: string
-  level: 'read' | 'write' | 'admin'
-}
 
 interface Role {
   id: string
   name: string
   description: string
   permissions: string[]
-  userCount: number
-  isSystem: boolean
+  userCount?: number
+  isSystem?: boolean
   isActive: boolean
   createdAt: string
   updatedAt: string
-  createdBy: string
+  createdBy?: string
   color: string
-  priority: number
+  priority?: number
+}
+
+interface RoleFormData {
+  name: string
+  description: string
+  permissions: string[]
+  color: string
+  isActive: boolean
 }
 
 const permissionCategories = [
@@ -182,9 +194,7 @@ const systemRoles = [
 ]
 
 export default function RoleManagement() {
-  const { emit, isConnected } = useRealTime()
-  const roles = useRealTimeData<Role[]>('roles')
-  
+  const [roles, setRoles] = useState<Role[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -193,10 +203,10 @@ export default function RoleManagement() {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<RoleFormData>({
     name: '',
     description: '',
-    permissions: [] as string[],
+    permissions: [],
     color: '#3B82F6',
     isActive: true
   })
@@ -204,6 +214,62 @@ export default function RoleManagement() {
   useEffect(() => {
     loadRoles()
   }, [])
+
+  const createDefaultRoles = async () => {
+    try {
+      setLoading(true)
+
+      const defaultRoles = [
+        {
+          name: 'Administrator',
+          description: 'Full system access with all permissions',
+          permissions: ['*'],
+          color: '#DC2626',
+          priority: 1,
+          isSystem: true
+        },
+        {
+          name: 'Manager',
+          description: 'Management access with user and analytics permissions',
+          permissions: ['users.read', 'users.create', 'messages.read', 'messages.send', 'analytics.read'],
+          color: '#2563EB',
+          priority: 2,
+          isSystem: true
+        },
+        {
+          name: 'Agent',
+          description: 'Basic agent access for messaging',
+          permissions: ['messages.read', 'messages.send', 'contacts.read'],
+          color: '#059669',
+          priority: 3,
+          isSystem: true
+        },
+        {
+          name: 'Viewer',
+          description: 'Read-only access for viewing data',
+          permissions: ['messages.read', 'analytics.read'],
+          color: '#6B7280',
+          priority: 4,
+          isSystem: true
+        }
+      ]
+
+      for (const role of defaultRoles) {
+        await fetch('/api/roles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(role)
+        })
+      }
+
+      loadRoles()
+      console.log('Default roles created successfully')
+    } catch (error) {
+      console.error('Error creating default roles:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const loadRoles = async () => {
     setLoading(true)
@@ -401,13 +467,23 @@ export default function RoleManagement() {
           >
             View Permissions
           </Button>
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            icon={<Plus size={16} />}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Create Role
-          </Button>
+          <div className="flex space-x-3">
+            <Button
+              onClick={() => setShowCreateModal(true)}
+              icon={<Plus size={16} />}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Create Role
+            </Button>
+
+            <Button
+              onClick={createDefaultRoles}
+              icon={<Settings size={16} />}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Setup Default Roles
+            </Button>
+          </div>
         </div>
       </div>
 

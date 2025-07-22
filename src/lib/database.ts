@@ -88,6 +88,9 @@ class LocalDatabase {
 
     // Create tables
     this.createTables()
+
+    // Initialize default templates
+    this.initializeDefaultTemplates()
   }
 
   private createTables() {
@@ -190,9 +193,29 @@ class LocalDatabase {
         created_by TEXT,
         usage_count INTEGER DEFAULT 0,
         rating REAL DEFAULT 0,
-        tags TEXT
+        tags TEXT,
+        media_url TEXT,
+        media_type TEXT CHECK (media_type IN ('image', 'video', 'audio', 'document')),
+        media_caption TEXT
       )
     `)
+
+    // Add media columns to existing templates table if they don't exist
+    try {
+      this.db.exec(`ALTER TABLE templates ADD COLUMN media_url TEXT`)
+    } catch (e) {
+      // Column already exists
+    }
+    try {
+      this.db.exec(`ALTER TABLE templates ADD COLUMN media_type TEXT CHECK (media_type IN ('image', 'video', 'audio', 'document'))`)
+    } catch (e) {
+      // Column already exists
+    }
+    try {
+      this.db.exec(`ALTER TABLE templates ADD COLUMN media_caption TEXT`)
+    } catch (e) {
+      // Column already exists
+    }
 
     // Roles Table
     this.db.exec(`
@@ -270,6 +293,79 @@ class LocalDatabase {
       )
     `)
 
+    // AI Agents Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        personality TEXT,
+        language TEXT DEFAULT 'en',
+        response_style TEXT DEFAULT 'professional',
+        auto_reply_enabled BOOLEAN DEFAULT 0,
+        response_delay_min INTEGER DEFAULT 1,
+        response_delay_max INTEGER DEFAULT 5,
+        max_response_length INTEGER DEFAULT 500,
+        keywords TEXT DEFAULT '[]',
+        system_prompt TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `)
+
+    // AI Agent Sessions Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_agent_sessions (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        priority INTEGER DEFAULT 1,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (agent_id) REFERENCES ai_agents(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id) ON DELETE CASCADE,
+        UNIQUE(agent_id, session_id)
+      )
+    `)
+
+    // AI Agent Chat Settings Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_agent_chat_settings (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        contact_number TEXT NOT NULL,
+        agent_id TEXT,
+        auto_reply_enabled BOOLEAN DEFAULT 0,
+        response_delay INTEGER DEFAULT 3,
+        custom_prompt TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (agent_id) REFERENCES ai_agents(id) ON DELETE SET NULL,
+        FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id) ON DELETE CASCADE,
+        UNIQUE(session_id, contact_number)
+      )
+    `)
+
+    // AI Agent Responses Table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_agent_responses (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        contact_number TEXT NOT NULL,
+        original_message TEXT NOT NULL,
+        generated_response TEXT NOT NULL,
+        was_sent BOOLEAN DEFAULT 0,
+        response_time_ms INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (agent_id) REFERENCES ai_agents(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES whatsapp_sessions(id) ON DELETE CASCADE
+      )
+    `)
+
     // AI Agent Providers Table (for agent-provider assignments)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS ai_agent_providers (
@@ -282,6 +378,7 @@ class LocalDatabase {
         configuration TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (agent_id) REFERENCES ai_agents(id) ON DELETE CASCADE,
         FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
         UNIQUE(agent_id, provider_id)
       )
@@ -583,8 +680,8 @@ class LocalDatabase {
   // Template Management
   createTemplate(templateData: any) {
     const stmt = this.db.prepare(`
-      INSERT INTO templates (id, name, category, type, content, variables, language, status, created_by, tags)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO templates (id, name, category, type, content, variables, language, status, created_by, tags, media_url, media_type, media_caption)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const result = stmt.run(
@@ -597,7 +694,10 @@ class LocalDatabase {
       templateData.language,
       templateData.status,
       templateData.createdBy,
-      JSON.stringify(templateData.tags || [])
+      JSON.stringify(templateData.tags || []),
+      templateData.mediaUrl || null,
+      templateData.mediaType || null,
+      templateData.mediaCaption || null
     )
 
     return this.getTemplate(templateData.id)
@@ -610,6 +710,13 @@ class LocalDatabase {
     if (template) {
       template.variables = JSON.parse(template.variables || '[]')
       template.tags = JSON.parse(template.tags || '[]')
+
+      // Map database column names to frontend field names
+      template.mediaUrl = template.media_url
+      template.mediaType = template.media_type
+      template.mediaCaption = template.media_caption
+      template.mediaFilename = template.media_filename
+      template.mediaSize = template.media_size
     }
 
     return template
@@ -622,19 +729,41 @@ class LocalDatabase {
     return templates.map(template => ({
       ...template,
       variables: JSON.parse(template.variables || '[]'),
-      tags: JSON.parse(template.tags || '[]')
+      tags: JSON.parse(template.tags || '[]'),
+      // Map database column names to frontend field names
+      mediaUrl: template.media_url,
+      mediaType: template.media_type,
+      mediaCaption: template.media_caption,
+      mediaFilename: template.media_filename,
+      mediaSize: template.media_size
     }))
   }
 
   updateTemplate(templateId: string, updates: any) {
+    // Map frontend field names to database column names
+    const fieldMapping: { [key: string]: string } = {
+      'mediaUrl': 'media_url',
+      'mediaType': 'media_type',
+      'mediaCaption': 'media_caption',
+      'mediaFilename': 'media_filename',
+      'mediaSize': 'media_size'
+    }
+
     const fields = Object.keys(updates).filter(key => key !== 'id')
-    const setClause = fields.map(field => `${field} = ?`).join(', ')
+    const setClause = fields.map(field => {
+      const dbField = fieldMapping[field] || field
+      return `${dbField} = ?`
+    }).join(', ')
+
     const values = fields.map(field => {
       if (field === 'variables' || field === 'tags') {
         return JSON.stringify(updates[field])
       }
       return updates[field]
     })
+
+    console.log('🔧 Update SQL:', `UPDATE templates SET ${setClause}, updated_at = datetime('now') WHERE id = ?`)
+    console.log('🔧 Update values:', values, templateId)
 
     const stmt = this.db.prepare(`
       UPDATE templates
@@ -1360,6 +1489,109 @@ class LocalDatabase {
     `)
     const result = stmt.run(agentId, providerId)
     return result.changes > 0
+  }
+
+  private initializeDefaultTemplates() {
+    try {
+      // Check if templates already exist
+      const existingTemplates = this.getAllTemplates()
+      if (existingTemplates.length > 0) {
+        return // Templates already initialized
+      }
+
+      const defaultTemplates = [
+        {
+          id: 'template-1',
+          name: 'Welcome Message',
+          content: '{Hello|Hi|Hey} {{name}}, {welcome to|glad to have you in} our service! We are {excited|thrilled|happy} to have you on board. 🎉',
+          variables: ['name'],
+          category: 'welcome'
+        },
+        {
+          id: 'template-2',
+          name: 'Promotional Offer',
+          content: '{Hi|Hello} {{name}}! {Special|Exclusive|Limited} offer just for you - Get {{discount}}% off on your next purchase. Use code: {{code}} 🛍️',
+          variables: ['name', 'discount', 'code'],
+          category: 'promotion'
+        },
+        {
+          id: 'template-3',
+          name: 'Order Confirmation',
+          content: 'Dear {{name}}, your order #{{orderNumber}} has been {confirmed|processed|received}. Total amount: ₹{{amount}}. Expected delivery: {{date}} 📦',
+          variables: ['name', 'orderNumber', 'amount', 'date'],
+          category: 'order'
+        },
+        {
+          id: 'template-4',
+          name: 'Reminder Message',
+          content: '{Hi|Hello} {{name}}, this is a {friendly|gentle|quick} reminder about {{event}} scheduled for {{date}}. {Don\'t miss out|See you there}! ⏰',
+          variables: ['name', 'event', 'date'],
+          category: 'reminder'
+        },
+        {
+          id: 'template-5',
+          name: 'Thank You Message',
+          content: '{Thank you|Thanks} {{name}} for {choosing|using} our service! Your feedback {means a lot|is valuable} to us. Rate us: {{rating_link}} ⭐',
+          variables: ['name', 'rating_link'],
+          category: 'thankyou'
+        },
+        {
+          id: 'template-6',
+          name: 'Follow Up',
+          content: '{Hi|Hello} {{name}}, {just checking in|following up} on your recent {purchase|order}. {How was your experience|Any feedback}? 💬',
+          variables: ['name'],
+          category: 'followup'
+        },
+        {
+          id: 'template-7',
+          name: 'Birthday Wishes',
+          content: '🎂 {Happy Birthday|Many happy returns} {{name}}! {Hope you have|Wishing you} a {wonderful|fantastic|amazing} day! Special birthday discount: {{discount}}% 🎁',
+          variables: ['name', 'discount'],
+          category: 'birthday'
+        },
+        {
+          id: 'template-8',
+          name: 'Flash Sale',
+          content: '⚡ {FLASH SALE|URGENT OFFER} {{name}}! {Limited time|Only today} - {{discount}}% OFF on {everything|all items}! {Hurry up|Don\'t wait} - {ends soon|limited stock}! 🔥',
+          variables: ['name', 'discount'],
+          category: 'flash-sale'
+        },
+        {
+          id: 'template-9',
+          name: 'Appointment Reminder',
+          content: '{Hi|Hello} {{name}}, {friendly reminder|just reminding you} about your appointment on {{date}} at {{time}}. {See you then|Looking forward to meeting you}! 📅',
+          variables: ['name', 'date', 'time'],
+          category: 'appointment'
+        },
+        {
+          id: 'template-10',
+          name: 'Payment Reminder',
+          content: 'Dear {{name}}, {gentle reminder|friendly notice} that your payment of ₹{{amount}} is {due|pending} on {{dueDate}}. {Please make payment|Kindly pay} to avoid {late fees|penalties}. 💳',
+          variables: ['name', 'amount', 'dueDate'],
+          category: 'payment'
+        }
+      ]
+
+      // Insert default templates
+      for (const template of defaultTemplates) {
+        this.createTemplate({
+          id: template.id,
+          name: template.name,
+          category: template.category,
+          type: 'text',
+          content: template.content,
+          variables: template.variables,
+          language: 'en',
+          status: 'active',
+          createdBy: 'system',
+          tags: ['default', 'anti-blocking']
+        })
+      }
+
+      console.log('✅ Default templates initialized')
+    } catch (error) {
+      console.error('❌ Error initializing default templates:', error)
+    }
   }
 
   private initializeDefaultProviders() {

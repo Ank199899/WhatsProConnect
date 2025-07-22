@@ -30,7 +30,7 @@ export async function GET(
     console.error('❌ Error getting role:', error)
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: (error && typeof error === 'object' && 'message' in error) ? (error as Error).message : 'Unknown error'
     }, { status: 500 })
   }
 }
