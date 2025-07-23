@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { getBackendUrl } from '@/lib/config'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -19,10 +20,10 @@ import {
 import { motion } from 'framer-motion'
 import { io, Socket } from 'socket.io-client'
 
-// API Base URL configuration - PRODUCTION FIXED PORTS
+// API Base URL configuration - DYNAMIC TAILSCALE OPTIMIZED
 const API_BASE_URL = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.hostname}:3006`
-  : 'http://192.168.1.230:3006'
+  : 'http://100.115.3.36:3006'
 
 interface WhatsAppSession {
   id: string
@@ -44,37 +45,43 @@ export default function WhatsAppNumbers() {
   const [selectedSession, setSelectedSession] = useState<WhatsAppSession | null>(null)
   const [qrImage, setQrImage] = useState('')
   const [socket, setSocket] = useState<Socket | null>(null)
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [isBackendAvailable, setIsBackendAvailable] = useState(true)
 
-  // Load real WhatsApp sessions from backend only (single source of truth)
+  // Load all WhatsApp sessions (real + demo) from unified API
   const loadSessions = async () => {
     try {
-      console.log('📋 Loading WhatsApp sessions from backend...')
-      console.log('🔗 API_BASE_URL:', API_BASE_URL)
+      console.log('📋 Loading WhatsApp sessions from unified API...')
+      setConnectionError(null)
 
-      // Load sessions directly from WhatsApp backend - FIXED PORT
-      const whatsappResponse = await fetch(`${API_BASE_URL}/api/sessions`)
-      console.log('📡 Response status:', whatsappResponse.status)
-      console.log('📡 Response ok:', whatsappResponse.ok)
+      // Load sessions from our unified API that combines real and demo sessions
+      const response = await fetch('/api/whatsapp/sessions')
+      console.log('📡 Response status:', response.status)
+      console.log('📡 Response ok:', response.ok)
 
-      if (whatsappResponse.ok) {
-        const whatsappData = await whatsappResponse.json()
-        console.log('📱 WhatsApp backend response:', whatsappData)
-        console.log('📱 Response type:', typeof whatsappData)
-        console.log('📱 Is array:', Array.isArray(whatsappData))
+      if (response.ok) {
+        const data = await response.json()
+        console.log('📱 Unified API response:', data)
+        console.log('📱 Sessions array:', data.sessions)
+        console.log('📱 Source info:', data.source)
 
-        if (Array.isArray(whatsappData) && whatsappData.length > 0) {
-          // Map WhatsApp sessions to our format
-          const mappedSessions = whatsappData.map((session: any) => ({
+        setIsBackendAvailable(true)
+
+        if (data.success && Array.isArray(data.sessions)) {
+          // Map sessions to our format
+          const mappedSessions = data.sessions.map((session: any) => ({
             id: session.id || session.sessionId,
             name: session.name,
             status: session.status === 'connected' ? 'ready' :
                    session.status === 'scanning' ? 'qr_code' :
+                   session.status === 'qr_code' ? 'qr_code' :
                    session.status === 'ready' ? 'ready' : 'disconnected',
             phone_number: session.phoneNumber,
             qr_code: session.qrCode,
             is_active: session.status === 'connected' || session.status === 'ready',
             created_at: session.lastActivity || new Date().toISOString(),
-            message_count: session.messageCount || 0
+            message_count: session.messageCount || 0,
+            isDemo: session.isDemo || false
           }))
 
           setSessions(mappedSessions)
@@ -82,6 +89,9 @@ export default function WhatsAppNumbers() {
           console.log('📋 Session details:', mappedSessions.map(s => ({ id: s.id, name: s.name, status: s.status, phone: s.phone_number })))
           return
         }
+      } else {
+        setIsBackendAvailable(false)
+        setConnectionError('Backend server is not responding. Please check if the WhatsApp server is running.')
       }
 
       // If no sessions found, show empty state
@@ -90,6 +100,8 @@ export default function WhatsAppNumbers() {
 
     } catch (error) {
       console.error('❌ Load failed:', error)
+      setIsBackendAvailable(false)
+      setConnectionError('Failed to connect to backend server. Please ensure the WhatsApp server is running.')
       setSessions([])
     } finally {
       setLoading(false)
@@ -105,6 +117,7 @@ export default function WhatsAppNumbers() {
   const testConnectivity = async () => {
     try {
       console.log('🧪 Testing connectivity...')
+      setConnectionError(null)
 
       const serverUrl = getServerUrl()
       console.log('🔧 Using server URL:', serverUrl)
@@ -117,10 +130,19 @@ export default function WhatsAppNumbers() {
       const frontendResponse = await fetch('/api/database/sessions')
       console.log('💾 Frontend API status:', frontendResponse.status)
 
-      alert('✅ Connectivity test passed! Backend: ' + backendResponse.status + ', Frontend: ' + frontendResponse.status)
+      if (backendResponse.ok && frontendResponse.ok) {
+        setIsBackendAvailable(true)
+        console.log('✅ Connectivity test passed! Backend: ' + backendResponse.status + ', Frontend: ' + frontendResponse.status)
+        // Reload sessions after successful connectivity test
+        loadSessions()
+      } else {
+        setIsBackendAvailable(false)
+        setConnectionError(`Connectivity test failed. Backend: ${backendResponse.status}, Frontend: ${frontendResponse.status}`)
+      }
     } catch (error) {
       console.error('❌ Connectivity test failed:', error)
-      alert('❌ Connectivity test failed: ' + (error as Error).message)
+      setIsBackendAvailable(false)
+      setConnectionError('Connectivity test failed: ' + (error as Error).message)
     }
   }
 
@@ -207,23 +229,23 @@ export default function WhatsAppNumbers() {
       setLoading(true)
       console.log('🆕 Creating session:', sessionName)
 
-      // Create session only in backend - single source of truth
-      console.log('📡 Calling backend API...')
-      const backendResponse = await fetch(`/api/backend/sessions/create`, {
+      // Create real session directly via WhatsApp backend
+      console.log('📡 Creating real WhatsApp session...')
+      const response = await fetch(`${getBackendUrl()}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: sessionName.trim() })
       })
 
-      if (!backendResponse.ok) {
-        throw new Error(`Backend error! status: ${backendResponse.status}`)
+      if (!response.ok) {
+        throw new Error(`WhatsApp backend error! status: ${response.status}`)
       }
 
-      const backendResult = await backendResponse.json()
-      console.log('✅ Backend session created:', backendResult)
+      const result = await response.json()
+      console.log('✅ Real WhatsApp session created:', result)
 
-      if (!backendResult.success) {
-        throw new Error(backendResult.message || 'Failed to create session')
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create real session')
       }
 
       setSessionName('')
@@ -256,51 +278,41 @@ export default function WhatsAppNumbers() {
       console.log('🗑️ Deleting session:', sessionId)
       setLoading(true)
 
+      // Find the session to check if it's demo or real
+      const sessionToDelete = sessions.find(s => s.id === sessionId)
+      if (!sessionToDelete) {
+        throw new Error('Session not found')
+      }
+
+      console.log('📋 Session type:', sessionToDelete.isDemo ? 'Demo' : 'Real')
+
       // First remove from UI immediately for better UX
       setSessions(prevSessions => prevSessions.filter(session => session.id !== sessionId))
 
-      // Delete from database first (most important)
-      console.log('💾 Calling database delete API...')
-      const dbResponse = await fetch(`/api/database/sessions/${sessionId}`, {
+      // Use unified delete API that handles both real and demo sessions
+      console.log('🗑️ Calling unified delete API...')
+      const response = await fetch(`/api/whatsapp/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
         }
       })
 
-      console.log('💾 Database delete response status:', dbResponse.status)
+      console.log('🗑️ Delete response status:', response.status)
 
-      if (!dbResponse.ok) {
-        const dbErrorText = await dbResponse.text()
-        console.error('❌ Database delete failed:', dbErrorText)
-        // Restore session in UI if database delete failed
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Delete failed:', errorText)
+        // Restore session in UI if delete failed
         await loadSessions()
-        throw new Error(`Database delete failed: ${dbResponse.status} - ${dbErrorText}`)
+        throw new Error(`Delete failed: ${response.status} - ${errorText}`)
       }
 
-      const dbResult = await dbResponse.json()
-      console.log('💾 Database delete result:', dbResult)
+      const result = await response.json()
+      console.log('✅ Delete result:', result)
 
-      // Try to delete from backend (optional, don't fail if this fails)
-      try {
-        console.log('📡 Calling backend delete API...')
-        const backendResponse = await fetch(`/api/backend/sessions/${sessionId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-
-        console.log('📡 Backend delete response status:', backendResponse.status)
-
-        if (backendResponse.ok) {
-          const backendResult = await backendResponse.json()
-          console.log('📡 Backend delete result:', backendResult)
-        } else {
-          console.warn('⚠️ Backend delete failed, but continuing...')
-        }
-      } catch (backendError) {
-        console.warn('⚠️ Backend delete error (ignoring):', backendError)
+      if (!result.success) {
+        throw new Error(result.message || 'Delete failed')
       }
 
       console.log('✅ Session deleted successfully')
@@ -326,22 +338,31 @@ export default function WhatsAppNumbers() {
         throw new Error('QR data is empty or invalid')
       }
 
-      // Use backend API to generate QR code instead of client-side
-      console.log('🔄 Using backend API for QR generation...')
-      const response = await fetch(`/api/test-qr?data=${encodeURIComponent(qrData)}`)
-
-      if (!response.ok) {
-        throw new Error(`Backend QR generation failed: ${response.statusText}`)
+      // Check if it's a demo QR code
+      if (qrData.startsWith('demo_qr_')) {
+        console.log('❌ Demo QR code detected, not generating image')
+        setQrImage('')
+        alert('Demo QR codes are not supported. Please use real WhatsApp sessions only.')
+        return
       }
 
-      const result = await response.json()
+      // Use client-side QR generation for faster performance
+      console.log('🔄 Generating QR code directly...')
 
-      if (!result.success) {
-        throw new Error(result.error || 'Backend QR generation failed')
-      }
+      // Import QRCode dynamically to avoid SSR issues
+      const QRCode = (await import('qrcode')).default
 
-      setQrImage(result.qrDataUrl)
-      console.log('✅ QR image generated successfully via backend')
+      const qrDataUrl = await QRCode.toDataURL(qrData, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+
+      setQrImage(qrDataUrl)
+      console.log('✅ QR image generated successfully')
     } catch (error) {
       console.error('❌ QR image generation failed:', error)
       console.error('❌ Error details:', error.message)
@@ -356,6 +377,12 @@ export default function WhatsAppNumbers() {
     console.log('🔄 Showing QR for session:', session.name, session.id)
     console.log('📱 Session QR code exists:', !!session.qr_code)
     console.log('📊 Session status:', session.status)
+
+    // Block demo sessions from showing QR
+    if (session.isDemo) {
+      alert('Demo sessions are not supported. Please create a real WhatsApp session.')
+      return
+    }
 
     setSelectedSession(session)
     setShowQRModal(true)
@@ -629,8 +656,75 @@ export default function WhatsAppNumbers() {
     )
   }
 
-  const connectedCount = sessions.filter(s => s.status === 'ready').length
-  const pendingCount = sessions.filter(s => s.status === 'qr_code').length
+  // Filter out demo sessions - only show real WhatsApp sessions
+  const realSessions = sessions.filter(s => !s.isDemo)
+  const connectedCount = realSessions.filter(s => s.status === 'ready').length
+  const pendingCount = realSessions.filter(s => s.status === 'qr_code').length
+
+  // Show offline mode when backend is not available
+  if (!isBackendAvailable && realSessions.length === 0) {
+    return (
+      <div className="space-y-6">
+        <AnimatedHeader
+          title="WhatsApp Numbers"
+          subtitle="Manage your WhatsApp sessions with professional messaging capabilities"
+          showLogo={false}
+        />
+
+        {/* Connection Error Banner */}
+        {connectionError && (
+          <div className="mx-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">
+                  Backend Server Offline
+                </h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{connectionError}</p>
+                </div>
+                <div className="mt-4">
+                  <div className="-mx-2 -my-1.5 flex">
+                    <button
+                      onClick={loadSessions}
+                      className="bg-red-50 px-2 py-1.5 rounded-md text-sm font-medium text-red-800 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-50 focus:ring-red-600"
+                    >
+                      Retry Connection
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Offline Mode Message */}
+        <div className="mx-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+            <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">WhatsApp Server Offline</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            The WhatsApp backend server is currently not running. Please start the server to manage WhatsApp sessions.
+          </p>
+          <div className="mt-6">
+            <button
+              onClick={testConnectivity}
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Test Connection
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -640,6 +734,37 @@ export default function WhatsAppNumbers() {
         subtitle="Manage your WhatsApp sessions with professional messaging capabilities"
         showLogo={false}
       />
+
+      {/* Connection Error Banner */}
+      {connectionError && (
+        <div className="mx-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                Backend Connection Error
+              </h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{connectionError}</p>
+              </div>
+              <div className="mt-4">
+                <div className="-mx-2 -my-1.5 flex">
+                  <button
+                    onClick={loadSessions}
+                    className="bg-red-50 px-2 py-1.5 rounded-md text-sm font-medium text-red-800 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-50 focus:ring-red-600"
+                  >
+                    Retry Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="px-6">
         {/* Advanced Control Panel */}
@@ -708,7 +833,17 @@ export default function WhatsAppNumbers() {
 
         {/* Advanced Sessions Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {sessions.map((session, index) => (
+          {realSessions.length === 0 ? (
+            <div className="col-span-full text-center py-12">
+              <div className="text-gray-400 text-lg mb-4">
+                No real WhatsApp sessions found
+              </div>
+              <div className="text-gray-500 text-sm">
+                Create a new session to get started with real WhatsApp connection
+              </div>
+            </div>
+          ) : (
+            realSessions.map((session, index) => (
             <motion.div
               key={session.id}
               initial={{ opacity: 0, y: 30, scale: 0.9 }}
@@ -919,10 +1054,33 @@ export default function WhatsAppNumbers() {
                 />
               </div>
             </motion.div>
-          ))}
+          )))}
         </div>
 
         {/* Empty State */}
+        {realSessions.length === 0 && sessions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-16"
+          >
+            <div className="text-gray-400 text-lg mb-4">
+              Only demo sessions found
+            </div>
+            <div className="text-gray-500 text-sm mb-6">
+              Create a real WhatsApp session to get started
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowCreateModal(true)}
+              className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+            >
+              Create Real Session
+            </motion.button>
+          </motion.div>
+        )}
+
         {sessions.length === 0 && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

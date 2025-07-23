@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { WhatsAppManagerClient, SessionStatus } from '@/lib/whatsapp-manager'
 import WhatsAppNumberManager from './SessionManager'
-import Inbox from './Inbox'
 import BulkMessaging from './BulkMessaging'
 import Analytics from './Analytics'
 
@@ -130,12 +129,10 @@ export default function Dashboard({ whatsappManager, isConnected }: DashboardPro
             )}
 
             {activeTab === 'inbox' && (
-              <Inbox
-                whatsappManager={whatsappManager}
-                sessions={readySessions}
-                selectedSession={selectedSession}
-                onSessionSelected={setSelectedSession}
-              />
+              <div className="p-6">
+                <h1 className="text-2xl font-bold text-gray-900">Inbox (Moved to Main App)</h1>
+                <p className="text-gray-600 mt-2">The inbox feature has been moved to the main application. Please use the sidebar navigation.</p>
+              </div>
             )}
 
             {activeTab === 'bulk' && (

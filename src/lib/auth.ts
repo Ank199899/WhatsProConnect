@@ -1,8 +1,16 @@
 'use client'
 
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
+
+// Simple JWT implementation for client-side
+const createSimpleJWT = (payload: any, secret: string) => {
+  const header = { alg: 'HS256', typ: 'JWT' }
+  const encodedHeader = btoa(JSON.stringify(header))
+  const encodedPayload = btoa(JSON.stringify(payload))
+  const signature = btoa(`${encodedHeader}.${encodedPayload}.${secret}`)
+  return `${encodedHeader}.${encodedPayload}.${signature}`
+}
 
 export interface User {
   id: string
@@ -139,23 +147,16 @@ export class AuthService {
   }
 
   private initializeDefaultData() {
-    // Clear localStorage to reset with new permissions structure
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('whatsapp_users')
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user_data')
-    }
-
     // First try to load users from localStorage
     this.loadUsersFromStorage()
 
     // Create default admin user with specified credentials
     const adminUser: User = {
       id: 'admin-001', // Fixed ID for consistency
-      username: 'ankit1999899',
-      email: 'ankit.chauhan1911@outlook.com',
-      password: 'Ankit@9718577453', // Store admin password
-      name: 'Ankit Chauhan',
+      username: 'admin123',
+      email: 'admin@whatsapp-pro.com',
+      password: 'Ankit@199899', // Store admin password
+      name: 'Admin User',
       role: 'admin',
       department: 'IT',
       permissions: [
@@ -180,13 +181,15 @@ export class AuthService {
       updatedAt: new Date().toISOString()
     }
 
-    // If no users found in storage, create default data
-    if (this.users.size === 0) {
-      console.log('🔧 Initializing default auth data...')
-
-      // Store admin user in users map
+    // Ensure admin user always exists
+    if (!this.users.has(adminUser.id)) {
       this.users.set(adminUser.id, adminUser)
-      console.log('Admin user created:', adminUser)
+      console.log('Admin user ensured:', adminUser)
+    }
+
+    // If no other users found in storage, create sample data (only once)
+    if (this.users.size === 1) { // Only admin exists
+      console.log('🔧 Initializing sample users for demo...')
 
       // Create sample users
       const sampleUsers: User[] = [
@@ -270,7 +273,7 @@ export class AuthService {
     }
 
     // Store admin password (in production, this should be hashed)
-    this.adminPassword = 'Ankit@9718577453'
+    this.adminPassword = 'Ankit@199899'
 
     // Set current user to admin for demo
     this.currentUser = adminUser
@@ -343,10 +346,14 @@ export class AuthService {
       this.saveUsersToStorage()
 
       // Generate JWT token
-      const token = jwt.sign(
-        { userId: user.id, username: user.username, role: user.role },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
+      const token = createSimpleJWT(
+        {
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          exp: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days
+        },
+        JWT_SECRET
       )
 
       this.currentUser = user
@@ -389,10 +396,14 @@ export class AuthService {
       this.saveUsersToStorage()
 
       // Generate JWT token
-      const token = jwt.sign(
-        { userId: newUser.id, email: newUser.email, role: newUser.role },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
+      const token = createSimpleJWT(
+        {
+          userId: newUser.id,
+          email: newUser.email,
+          role: newUser.role,
+          exp: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days
+        },
+        JWT_SECRET
       )
 
       return { user: newUser, token }

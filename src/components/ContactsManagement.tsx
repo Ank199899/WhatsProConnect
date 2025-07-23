@@ -62,8 +62,19 @@ const contactTags = [
 ]
 
 export default function ContactsManagement() {
-  const { emit, isConnected } = useRealTime()
-  const realtimeContacts = useRealTimeData<Contact[]>('contacts')
+  // Safe real-time context usage with fallbacks
+  let emit: any = () => {}
+  let isConnected = false
+  let realtimeContacts: Contact[] = []
+
+  try {
+    const realTimeContext = useRealTime()
+    emit = realTimeContext?.emit || (() => {})
+    isConnected = realTimeContext?.isConnected || false
+    realtimeContacts = useRealTimeData<Contact[]>('contacts') || []
+  } catch (error) {
+    console.log('RealTime context not available, using fallbacks')
+  }
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -87,11 +98,15 @@ export default function ContactsManagement() {
     customFields: {} as Record<string, any>
   })
 
-  // Real-time subscription for contacts updates
-  useRealTimeSubscription('contacts', (updatedContacts) => {
-    console.log('📞 Contacts updated in real-time:', updatedContacts.length)
-    setContacts(updatedContacts)
-  })
+  // Real-time subscription for contacts updates (with error handling)
+  try {
+    useRealTimeSubscription('contacts', (updatedContacts) => {
+      console.log('📞 Contacts updated in real-time:', updatedContacts.length)
+      setContacts(updatedContacts)
+    })
+  } catch (error) {
+    console.log('RealTime subscription not available')
+  }
 
   // Sync with real-time data
   useEffect(() => {

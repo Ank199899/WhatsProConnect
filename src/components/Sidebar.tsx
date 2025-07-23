@@ -41,10 +41,14 @@ const tabs = [
   { id: 'bulk', label: 'Bulk Messaging', icon: Megaphone, color: 'text-red-500', permission: 'bulk.view' },
   { id: 'templates', label: 'Templates', icon: FileText, color: 'text-emerald-500', permission: 'templates.view' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, color: 'text-indigo-500', permission: 'analytics.view' },
-  { id: 'users', label: 'User Management', icon: Shield, color: 'text-cyan-500', permission: 'users.view' },
+  { id: 'admin-users', label: 'Admin User Panel', icon: UserCog, color: 'text-purple-500', permission: '*' },
   { id: 'roles', label: 'Roles & Permissions', icon: UserCog, color: 'text-teal-500', permission: 'roles.view' },
-  { id: 'credentials', label: 'Login Credentials', icon: Key, color: 'text-purple-500', permission: 'credentials.view' },
   { id: 'api', label: 'API & Webhooks', icon: Key, color: 'text-pink-500', permission: 'api.view' }
+]
+
+// Development-only tabs (hidden in production)
+const devTabs = [
+  { id: 'credentials', label: 'Login Credentials', icon: Key, color: 'text-purple-500', permission: 'credentials.view' }
 ]
 
 const bottomTabs = [
@@ -58,8 +62,11 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const { logout, user } = useAuth()
   const { hasPermission } = usePermissions()
 
-  // Filter tabs based on user permissions
-  const visibleTabs = tabs.filter(tab => {
+  // Filter tabs based on user permissions and environment
+  const isProduction = process.env.NODE_ENV === 'production'
+  const allTabs = isProduction ? tabs : [...tabs, ...devTabs]
+
+  const visibleTabs = allTabs.filter(tab => {
     if (!tab.permission) return true
     return hasPermission(tab.permission)
   })

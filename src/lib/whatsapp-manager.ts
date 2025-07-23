@@ -1,4 +1,5 @@
 import { LocalStorage } from './local-storage'
+import { getBackendUrl, getWebSocketUrl } from '@/lib/config'
 
 export interface SessionStatus {
   id: string
@@ -72,20 +73,8 @@ export class WhatsAppManagerClient {
   private cachedMessages: any[] = []
 
   constructor(baseUrl?: string) {
-    // FIXED PORT CONFIGURATION - Backend always on 3006
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const protocol = window.location.protocol
-
-      // FIXED: Always use port 3006 for WhatsApp backend
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        this.baseUrl = baseUrl || 'http://localhost:3006'
-      } else {
-        this.baseUrl = baseUrl || `${protocol}//${hostname}:3006`
-      }
-    } else {
-      this.baseUrl = baseUrl || 'http://localhost:3006'
-    }
+    // Use centralized configuration
+    this.baseUrl = baseUrl || getBackendUrl()
 
     console.log('🔧 WhatsApp Manager initialized with FIXED URL:', this.baseUrl)
   }
@@ -229,12 +218,12 @@ export class WhatsAppManagerClient {
   // Session Management
   async createSession(name?: string): Promise<{ success: boolean; sessionId: string; sessionName: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/sessions/create`, {
+      const response = await fetch('/api/whatsapp/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ sessionName: name }),
       })
 
       if (!response.ok) {
@@ -292,13 +281,14 @@ export class WhatsAppManagerClient {
 
   async getSessions(): Promise<SessionStatus[]> {
     try {
-      // Get sessions from backend server only - single source of truth
-      const response = await fetch(`${this.baseUrl}/api/sessions`)
+      // Get sessions from frontend API which fetches from backend
+      const response = await fetch('/api/whatsapp/sessions')
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const serverSessions = await response.json()
+      const result = await response.json()
+      const serverSessions = result.sessions || []
 
       // Map server sessions to our format
       const sessions: SessionStatus[] = serverSessions.map((session: any) => ({
@@ -495,16 +485,24 @@ export class WhatsAppManagerClient {
   // Chat Management
   async getChats(sessionId: string) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chats/${sessionId}`)
-      const data = await response.json()
+      console.log(`📱 WhatsAppManager: Getting chats for session ${sessionId}`)
+      const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/chats`)
 
-      if (data.success) {
-        return data.chats
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
+      const data = await response.json()
+      console.log(`✅ WhatsAppManager: Received chats response:`, data)
+
+      if (data.success) {
+        return data.chats || []
+      }
+
+      console.warn('❌ WhatsAppManager: Failed to get chats:', data.error)
       return []
     } catch (error) {
-      console.error('Error getting chats:', error)
+      console.error('❌ WhatsAppManager: Error getting chats:', error)
       return []
     }
   }
@@ -581,24 +579,16 @@ export class WhatsAppManagerClient {
     try {
       console.log('🔄 Getting messages for:', contactNumber)
 
-      // Try to get from WhatsApp API first
-      const response = await fetch(`${this.baseUrl}/api/messages/${sessionId}/${encodeURIComponent(contactNumber)}`)
+      // Get messages directly from WhatsApp client via server
+      const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/messages/${encodeURIComponent(contactNumber)}`)
       const data = await response.json()
 
       if (data.success && data.messages) {
-        console.log('✅ Got messages from API:', data.messages.length)
+        console.log('✅ Got messages from WhatsApp client:', data.messages.length)
         return data.messages
       }
 
-      // Fallback to database via API
-      const dbResponse = await fetch(`/api/database/messages?session_id=${sessionId}&contact_number=${encodeURIComponent(contactNumber)}`)
-      const dbData = await dbResponse.json()
-
-      if (dbData.success && dbData.messages) {
-        console.log('✅ Got messages from database:', dbData.messages.length)
-        return dbData.messages
-      }
-
+      console.log('⚠️ No messages found or API error:', data.error)
       return []
     } catch (error) {
       console.error('❌ Error getting messages:', error)

@@ -105,4 +105,16 @@ export function CardFooter({ children, className, ...props }: CardFooterProps) {
   )
 }
 
+interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  // Title props
+}
+
+export function CardTitle({ children, className, ...props }: CardTitleProps) {
+  return (
+    <h3 className={cn('text-lg font-semibold text-gray-900', className)} {...props}>
+      {children}
+    </h3>
+  )
+}
+
 export default Card

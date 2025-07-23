@@ -207,8 +207,16 @@ export default function LoginCredentialsDisplay() {
                     updatedAt: new Date().toISOString()
                   }
                   
+                  const sessionData = {
+                    token: `token-${cred.id}`,
+                    user: adminUser,
+                    timestamp: Date.now(),
+                    expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+                  }
+
                   localStorage.setItem('auth_token', `token-${cred.id}`)
                   localStorage.setItem('user_data', JSON.stringify(adminUser))
+                  localStorage.setItem('session_info', JSON.stringify(sessionData))
                   window.location.href = '/'
                 }}
                 className="w-full bg-green-600 hover:bg-green-700"

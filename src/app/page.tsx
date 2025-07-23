@@ -7,24 +7,15 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Sidebar from '@/components/Sidebar'
 import AdvancedDashboard from '@/components/AdvancedDashboard'
-// import Inbox from '@/components/Inbox' // Missing component
-import NewInbox from '@/components/NewInbox'
-import AIInbox from '@/components/AIInbox'
-import LiveInbox from '@/components/LiveInbox'
-import AdvancedRealTimeInbox from '@/components/AdvancedRealTimeInbox'
-import SessionManager from '@/components/SessionManager'
+import UltraModernInbox from '@/components/UltraModernInbox'
 import WhatsAppNumbers from '@/components/WhatsAppNumbers'
 import BulkMessaging from '@/components/BulkMessaging'
-import Analytics from '@/components/Analytics'
 import AdvancedAnalytics from '@/components/AdvancedAnalytics'
-import UserManagement from '@/components/UserManagement'
+import AdminUserManagement from '@/components/AdminUserManagement'
 import APIManagement from '@/components/APIManagement'
 import TemplateManagement from '@/components/TemplateManagement'
-import RoleManagement from '@/components/RoleManagement'
 import AdvancedRoleManagement from '@/components/AdvancedRoleManagement'
 import ContactsManagement from '@/components/ContactsManagement'
-import AIAgentManagement from '@/components/AIAgentManagement'
-import AdvancedAIAgentManagement from '@/components/AdvancedAIAgentManagement'
 import AIProviderSettings from '@/components/AIProviderSettings'
 import UltimateAIManagement from '@/components/UltimateAIManagement'
 import LoginCredentialsDisplay from '@/components/LoginCredentialsDisplay'
@@ -116,7 +107,7 @@ function MainApp() {
       case 'sessions':
         return <WhatsAppNumbers />
       case 'inbox':
-        return <AdvancedRealTimeInbox
+        return <UltraModernInbox
           whatsappManager={whatsappManager}
           sessions={sessions}
           selectedSession={selectedSession}
@@ -155,8 +146,8 @@ function MainApp() {
         return <AdvancedAnalytics />
       case 'ai-providers':
         return <AIProviderSettings />
-      case 'users':
-        return <UserManagement />
+      case 'admin-users':
+        return <AdminUserManagement />
       case 'roles':
         return <AdvancedRoleManagement />
       case 'credentials':

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff, Lock, User, Shield, MessageCircle, Zap, Globe } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface LoginPageProps {
@@ -15,7 +16,6 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { bypassLogin } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,21 +31,7 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
     }
   }
 
-  const handleBypass = () => {
-    console.log('🚀 Bypass button clicked!')
-    setIsSubmitting(true)
 
-    try {
-      // Direct bypass login - no async needed
-      bypassLogin()
-      console.log('✅ Bypass login initiated! Should redirect to main app...')
-
-    } catch (err) {
-      console.error('❌ Bypass login error:', err)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
@@ -62,14 +48,84 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
         <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8 space-y-8">
           {/* Header */}
           <div className="text-center space-y-4">
-            <div className="mx-auto w-20 h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <MessageCircle className="w-10 h-10 text-white" />
+            <div className="relative mx-auto w-20 h-20">
+              {/* Main Logo Container with Advanced Animation */}
+              <motion.div
+                className="w-20 h-20 bg-gradient-to-br from-emerald-400 via-green-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-2xl"
+                whileHover={{
+                  scale: 1.1,
+                  rotate: 12,
+                  boxShadow: "0 20px 40px rgba(16, 185, 129, 0.4)"
+                }}
+                transition={{ duration: 0.3 }}
+                animate={{
+                  y: [0, -5, 0],
+                  boxShadow: [
+                    "0 10px 30px rgba(16, 185, 129, 0.3)",
+                    "0 15px 40px rgba(16, 185, 129, 0.4)",
+                    "0 10px 30px rgba(16, 185, 129, 0.3)"
+                  ]
+                }}
+                style={{ animationDuration: "3s", animationIterationCount: "infinite" }}
+              >
+                {/* Animated Background Pulse */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-green-600 rounded-2xl opacity-75"
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+
+                {/* Floating Particles */}
+                <motion.div
+                  className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"
+                  animate={{ y: [-3, -8, -3] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+                <motion.div
+                  className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full"
+                  animate={{ y: [3, 8, 3] }}
+                  transition={{ duration: 1.8, repeat: Infinity, delay: 0.3 }}
+                />
+
+                {/* Main Icon with Rotation */}
+                <motion.div
+                  whileHover={{ rotate: 180 }}
+                  transition={{ duration: 0.5 }}
+                  className="relative z-10"
+                  animate={{ rotate: [0, 5, -5, 0] }}
+                  style={{ animationDuration: "4s", animationIterationCount: "infinite" }}
+                >
+                  <MessageCircle className="w-10 h-10 text-white" />
+                </motion.div>
+
+                {/* Glowing Ring */}
+                <motion.div
+                  className="absolute inset-0 rounded-2xl border-2 border-emerald-300"
+                  initial={{ opacity: 0, scale: 1 }}
+                  whileHover={{ opacity: 1, scale: 1.1 }}
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+              </motion.div>
+
+              {/* Status Indicator */}
+              <motion.div
+                className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white shadow-lg"
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+              >
+                <motion.div
+                  className="w-full h-full bg-green-500 rounded-full"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              </motion.div>
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                WhatsApp Advanced
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                WhatsPro Connect
               </h1>
-              <p className="text-gray-600 mt-2">Advanced WhatsApp Management Portal</p>
+              <p className="text-gray-600 mt-2">Professional WhatsApp Solution</p>
             </div>
           </div>
 
@@ -173,30 +229,14 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
               )}
             </button>
 
-            {/* Bypass Button */}
-            <button
-              type="button"
-              onClick={handleBypass}
-              disabled={isSubmitting || isLoading}
-              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 px-4 rounded-xl font-medium hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {isSubmitting || isLoading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Bypassing...</span>
-                </div>
-              ) : (
-                '🚀 Quick Admin Access (Bypass)'
-              )}
-            </button>
+
 
             {/* Login Help */}
             <div className="text-center text-sm text-gray-600 space-y-2">
-              <p>Use your User Management credentials to login</p>
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-xs font-medium text-blue-800">Default Admin Credentials:</p>
-                <p className="text-xs text-blue-700">Username: ankit1999899</p>
-                <p className="text-xs text-blue-700">Password: Ankit@9718577453</p>
+              <p>Enter your credentials to access the management portal</p>
+              <div className="bg-green-50 p-3 rounded-lg">
+                <p className="text-xs font-medium text-green-800">Professional WhatsApp Business Solution</p>
+                <p className="text-xs text-green-700">Secure • Reliable • Scalable</p>
               </div>
             </div>
           </form>

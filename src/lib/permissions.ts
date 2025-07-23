@@ -177,3 +177,126 @@ export const hasAnyPermission = (userPermissions: string[], requiredPermissions:
   if (userPermissions.includes('*')) return true
   return requiredPermissions.some(permission => userPermissions.includes(permission))
 }
+
+// Role management functions
+export interface Role {
+  id: string
+  name: string
+  displayName: string
+  description: string
+  permissions: string[]
+  color: string
+  icon: string
+  level: number
+}
+
+export const ROLES: Role[] = [
+  {
+    id: 'admin',
+    name: 'admin',
+    displayName: 'Administrator',
+    description: 'Full system access with all permissions',
+    permissions: ['*'],
+    color: 'bg-red-500',
+    icon: 'Crown',
+    level: 5
+  },
+  {
+    id: 'manager',
+    name: 'manager',
+    displayName: 'Manager',
+    description: 'Team management and advanced features',
+    permissions: [
+      'dashboard.view', 'dashboard.stats',
+      'users.view', 'users.update', 'users.manage_roles',
+      'sessions.view', 'sessions.create', 'sessions.update',
+      'messages.view', 'messages.send', 'messages.bulk', 'messages.templates',
+      'contacts.view', 'contacts.create', 'contacts.update', 'contacts.import', 'contacts.export',
+      'analytics.view', 'analytics.advanced', 'analytics.export',
+      'ai.view', 'ai.configure'
+    ],
+    color: 'bg-blue-500',
+    icon: 'Shield',
+    level: 4
+  },
+  {
+    id: 'supervisor',
+    name: 'supervisor',
+    displayName: 'Supervisor',
+    description: 'Team supervision and monitoring',
+    permissions: [
+      'dashboard.view', 'dashboard.stats',
+      'users.view',
+      'sessions.view', 'sessions.update',
+      'messages.view', 'messages.send', 'messages.bulk', 'messages.templates',
+      'contacts.view', 'contacts.create', 'contacts.update', 'contacts.export',
+      'analytics.view', 'analytics.advanced',
+      'ai.view'
+    ],
+    color: 'bg-purple-500',
+    icon: 'UserCheck',
+    level: 3
+  },
+  {
+    id: 'agent',
+    name: 'agent',
+    displayName: 'Agent',
+    description: 'Basic messaging and customer support',
+    permissions: [
+      'dashboard.view',
+      'sessions.view',
+      'messages.view', 'messages.send', 'messages.templates',
+      'contacts.view', 'contacts.create', 'contacts.update',
+      'analytics.view'
+    ],
+    color: 'bg-green-500',
+    icon: 'User',
+    level: 2
+  },
+  {
+    id: 'viewer',
+    name: 'viewer',
+    displayName: 'Viewer',
+    description: 'Read-only access to reports and analytics',
+    permissions: [
+      'dashboard.view',
+      'sessions.view',
+      'messages.view',
+      'contacts.view',
+      'analytics.view'
+    ],
+    color: 'bg-gray-500',
+    icon: 'Eye',
+    level: 1
+  }
+]
+
+export function getRoleByName(roleName: string): Role | undefined {
+  return ROLES.find(role => role.name === roleName)
+}
+
+export function canUserManageRole(userRole: string, targetRole: string): boolean {
+  const userRoleObj = getRoleByName(userRole)
+  const targetRoleObj = getRoleByName(targetRole)
+
+  if (!userRoleObj || !targetRoleObj) return false
+
+  // Admin can manage all roles
+  if (userRole === 'admin') return true
+
+  // Users can only manage roles with lower level than their own
+  return userRoleObj.level > targetRoleObj.level
+}
+
+export function getManageableRoles(userRole: string): Role[] {
+  const userRoleObj = getRoleByName(userRole)
+  if (!userRoleObj) return []
+
+  // Admin can manage all roles except admin
+  if (userRole === 'admin') {
+    return ROLES.filter(role => role.name !== 'admin')
+  }
+
+  // Other users can manage roles with lower level
+  return ROLES.filter(role => role.level < userRoleObj.level)
+}
