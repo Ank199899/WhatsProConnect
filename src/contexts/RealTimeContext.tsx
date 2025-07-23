@@ -55,14 +55,14 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
         const hostname = window.location.hostname
         const protocol = window.location.protocol
 
-        // Always use port 3001 for backend - FIXED!
+        // Always use port 3006 for backend - FIXED!
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://localhost:3001'
+          return 'http://localhost:3006'
         } else {
-          return `${protocol}//${hostname}:3001`
+          return `${protocol}//${hostname}:3006`
         }
       }
-      return 'http://localhost:3001'
+      return 'http://localhost:3006'
     }
 
     const socketUrl = getSocketUrl()
@@ -167,11 +167,22 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
     }))
   }
 
-  const unsubscribe = (channel: string) => {
-    setSubscribers(prev => ({
-      ...prev,
-      [channel]: []
-    }))
+  const unsubscribe = (channel: string, callback?: (data: any) => void) => {
+    setSubscribers(prev => {
+      if (!callback) {
+        // If no callback provided, clear all subscribers for the channel
+        return {
+          ...prev,
+          [channel]: []
+        }
+      }
+
+      // Remove specific callback
+      return {
+        ...prev,
+        [channel]: (prev[channel] || []).filter(cb => cb !== callback)
+      }
+    })
   }
 
   const notifySubscribers = (channel: string, data: any) => {

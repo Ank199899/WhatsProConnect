@@ -5,7 +5,7 @@ export async function GET() {
   try {
     console.log('📋 Getting all templates')
     
-    const templates = DatabaseService.getAllTemplates()
+    const templates = await DatabaseService.getAllTemplates()
     
     return NextResponse.json({
       success: true,

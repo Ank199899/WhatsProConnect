@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { getFrontendUrl } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,7 +92,7 @@ async function handleFileUpload(file: File, sessionId: string, to: string, capti
         sessionId,
         to,
         mediaType,
-        mediaUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3006'}${fileUrl}`,
+        mediaUrl: `${getFrontendUrl()}${fileUrl}`,
         caption: caption || '',
         filename: originalName,
         fileSize: file.size

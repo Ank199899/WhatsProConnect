@@ -5,7 +5,7 @@ export async function GET() {
   try {
     console.log('👥 Getting all contacts')
     
-    const contacts = DatabaseService.getAllContacts()
+    const contacts = await DatabaseService.getAllContacts()
     
     return NextResponse.json({
       success: true,

@@ -10,7 +10,7 @@ export async function GET(
     console.log('🔄 QR request for session:', sessionId)
 
     // Try to get session data from WhatsApp backend
-    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3001'
+    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3006'
     
     try {
       // First try to get QR from WhatsApp backend
@@ -99,7 +99,7 @@ export async function POST(
     console.log('🔄 QR generation request for session:', sessionId)
 
     // Try to trigger QR generation on WhatsApp backend
-    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3001'
+    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3006'
     
     try {
       const backendResponse = await fetch(`${backendUrl}/api/sessions/${sessionId}/start`, {

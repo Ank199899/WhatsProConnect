@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import DatabaseService from '@/lib/database'
-import Database from 'better-sqlite3'
-import path from 'path'
+import { ServerDatabaseService } from '@/lib/database-server'
 
 interface RouteParams {
   params: Promise<{
@@ -18,8 +16,9 @@ export async function DELETE(
 
     console.log('🗑️ Deleting session from database:', sessionId)
 
-    // Use DatabaseService instead of direct database connection
-    const success = DatabaseService.deleteSession(sessionId)
+    // Use ServerDatabaseService instead of SQLite
+    const dbService = new ServerDatabaseService()
+    const success = await dbService.deleteSession(sessionId)
 
     if (success) {
       console.log('✅ Session deleted successfully from database')

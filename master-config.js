@@ -5,8 +5,8 @@
  */
 
 const MASTER_CONFIG = {
-  // 🌐 MAIN DOMAIN (without port)
-  DOMAIN: '192.168.1.230',
+  // 🌐 MAIN DOMAIN (without port) - Tailscale IP for remote access
+  DOMAIN: '100.115.3.36',
 
   // 🔧 INTERNAL PORTS (hidden from users)
   INTERNAL_PORTS: {
@@ -15,23 +15,30 @@ const MASTER_CONFIG = {
     NGINX: 80
   },
 
-  // 🌍 PUBLIC URLs (what users see - no ports!)
+  // 🌍 PUBLIC URLs (what users see - Tailscale for remote access!)
   PUBLIC_URLS: {
-    APP: 'http://192.168.1.230',           // Main app (no port!)
-    API: 'http://192.168.1.230/api',       // API endpoint (no port!)
-    ADMIN: 'http://192.168.1.230/admin'    // Admin panel (no port!)
+    APP: 'http://100.115.3.36:3008',       // Main app (Tailscale IP)
+    API: 'http://100.115.3.36:3006/api',   // API endpoint (Tailscale IP)
+    ADMIN: 'http://100.115.3.36:3008/admin' // Admin panel (Tailscale IP)
   },
   
   // 📱 APP SETTINGS
   APP: {
-    NAME: 'WhatsApp Advanced WebApp',
+    NAME: 'WhatsPro Connect',
     VERSION: '1.0.0',
     ENVIRONMENT: 'production'
   },
   
-  // 🗄️ DATABASE
+  // 🗄️ DATABASE - POSTGRESQL CONFIGURATION
   DATABASE: {
-    PATH: './data/whatsapp.db',
+    TYPE: 'postgresql',
+    HOST: process.env.DB_HOST || 'localhost',
+    PORT: process.env.DB_PORT || 5432,
+    NAME: process.env.DB_NAME || 'whatsapp_advanced',
+    USER: process.env.DB_USER || 'whatsapp_user',
+    PASSWORD: process.env.DB_PASSWORD || 'whatsapp_secure_password_2025',
+    SSL: process.env.DB_SSL === 'true',
+    MAX_CONNECTIONS: 20,
     BACKUP_PATH: './data/backups/'
   },
   

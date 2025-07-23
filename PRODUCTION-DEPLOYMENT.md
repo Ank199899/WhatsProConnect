@@ -11,21 +11,26 @@
 
 ### 🔗 Production URLs
 
-- **Frontend:** http://localhost:3006
-- **Backend API:** http://localhost:3002
-- **API Endpoints:** http://localhost:3002/api
-- **Socket.IO:** http://localhost:3002
-- **Test Page:** http://localhost:3002/test-inbox.html
+- **Frontend:** http://localhost:3008
+- **Backend API:** http://localhost:3006
+- **API Endpoints:** http://localhost:3006/api
+- **Health Check:** http://localhost:3006/api/health
+- **Socket.IO:** http://localhost:3006
 
 ### 📊 Current Status
 
 ```bash
-┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
-│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
-├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
-│ 0  │ whatsapp-nextjs    │ cluster  │ 0    │ online    │ 0%       │ 57.6mb   │
-│ 1  │ whatsapp-server    │ manual   │ -    │ running   │ 0%       │ 40.3mb   │
-└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+# Check service status
+./scripts/monitor.sh status
+
+=== WhatsApp Advanced WebApp Status ===
+Time: Tue Jul 22 01:05:55 PM UTC 2025
+System: CPU: 64.5%, Memory: 23.1%, Disk: 45%
+
+✅ Backend: Healthy
+   Sessions: 2
+   Uptime: 83.864344478 seconds
+✅ Frontend: Healthy
 ```
 
 ### 🎯 Key Features Deployed

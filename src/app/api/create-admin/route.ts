@@ -6,9 +6,10 @@ export async function POST(request: NextRequest) {
     // Create admin user directly
     const adminUser = {
       id: 'admin-001',
-      username: 'ankit1999899',
-      email: 'ankit.chauhan1911@outlook.com',
-      name: 'Ankit Chauhan',
+      username: 'admin123',
+      email: 'admin@whatsapp-pro.com',
+      password: 'Ankit@199899',
+      name: 'Admin User',
       role: 'admin' as const,
       department: 'IT',
       permissions: ['*'],
@@ -20,9 +21,9 @@ export async function POST(request: NextRequest) {
     // Access private users map
     const usersMap = (authServiceInstance as any).users
     usersMap.set(adminUser.id, adminUser)
-    
+
     // Set admin password
-    ;(authServiceInstance as any).adminPassword = 'Ankit@9718577453'
+    ;(authServiceInstance as any).adminPassword = 'Ankit@199899'
 
     return NextResponse.json({
       success: true,

@@ -30,15 +30,15 @@ export async function GET(request: NextRequest) {
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     }
 
-    // Get all sessions
-    const sessions = DatabaseService.getAllSessions()
+    // Get all sessions (real data only - will be empty initially)
+    const sessions = await DatabaseService.getSessions()
     const activeSessions = sessions.filter(s => s.phone_number)
 
-    // Get all messages in date range
-    const messages = DatabaseService.getMessagesInDateRange(startDate, now)
-    
-    // Get all contacts
-    const contacts = DatabaseService.getAllContacts()
+    // Get all messages in date range (real data only - will be empty initially)
+    const messages = await DatabaseService.getMessagesInDateRange(startDate, now)
+
+    // Get all contacts (real data only - will be empty initially)
+    const contacts = await DatabaseService.getAllContacts()
 
     // Calculate analytics
     const totalMessages = messages.length
@@ -84,16 +84,43 @@ export async function GET(request: NextRequest) {
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const messagesLast24h = messages.filter(m => new Date(m.timestamp) > last24h).length
 
+    // Calculate real metrics from actual data
+    const deliveredMessages = messages.filter(m => m.status === 'delivered' || m.status === 'sent')
+    const successRate = totalMessages > 0 ? Math.round((deliveredMessages.length / totalMessages) * 100 * 100) / 100 : 0
+
+    // Calculate sentiment from message content (basic implementation)
+    const positiveKeywords = ['thanks', 'good', 'great', 'excellent', 'happy', 'satisfied']
+    const negativeKeywords = ['bad', 'terrible', 'angry', 'disappointed', 'problem', 'issue']
+    let sentimentScore = 50 // neutral baseline
+
+    if (totalMessages > 0) {
+      const positiveCount = messages.filter(m =>
+        positiveKeywords.some(keyword => m.content?.toLowerCase().includes(keyword))
+      ).length
+      const negativeCount = messages.filter(m =>
+        negativeKeywords.some(keyword => m.content?.toLowerCase().includes(keyword))
+      ).length
+
+      sentimentScore = Math.round(((positiveCount - negativeCount) / totalMessages * 50 + 50) * 100) / 100
+      sentimentScore = Math.max(0, Math.min(100, sentimentScore)) // Clamp between 0-100
+    }
+
+    // Calculate urgent messages (messages with urgent keywords)
+    const urgentKeywords = ['urgent', 'emergency', 'asap', 'immediately', 'help']
+    const urgentMessages = messages.filter(m =>
+      urgentKeywords.some(keyword => m.content?.toLowerCase().includes(keyword))
+    ).length
+
     const analyticsData = {
       totalMessages,
       responseRate,
       avgResponseTime,
-      sentimentScore: Math.round((Math.random() * 20 + 70) * 100) / 100, // 70-90%
-      aiAccuracy: Math.round((Math.random() * 10 + 85) * 100) / 100, // 85-95%
-      autoReplyRate: Math.round((Math.random() * 20 + 60) * 100) / 100, // 60-80%
-      customerSatisfaction: Math.round((Math.random() * 1 + 4) * 10) / 10, // 4.0-5.0
-      urgentMessages: Math.floor(Math.random() * 50 + 10), // 10-60
-      resolvedIssues: Math.floor(totalMessages * 0.6), // 60% resolution rate
+      sentimentScore,
+      aiAccuracy: successRate, // Use delivery success rate as AI accuracy
+      autoReplyRate: outgoingMessages.length > 0 ? Math.round((outgoingMessages.length / totalMessages) * 100 * 100) / 100 : 0,
+      customerSatisfaction: Math.round((sentimentScore / 20) * 10) / 10, // Convert to 1-5 scale
+      urgentMessages,
+      resolvedIssues: deliveredMessages.length, // Consider delivered messages as resolved
       topContacts,
       categoryBreakdown,
       // Additional metrics

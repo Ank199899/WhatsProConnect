@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import DatabaseService from '@/lib/database'
+import { ServerDatabaseService } from '@/lib/database-server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,7 +7,8 @@ export async function POST(request: NextRequest) {
     
     console.log('👤 Saving contact to database:', contactData)
     
-    const savedContact = DatabaseService.saveContact({
+    const dbService = new ServerDatabaseService()
+    const savedContact = await dbService.saveContact({
       session_id: contactData.session_id,
       whatsapp_id: contactData.whatsapp_id || contactData.phone_number,
       name: contactData.name,
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     }
     
     console.log('👥 Getting contacts for session:', sessionId)
-    const contacts = DatabaseService.getContacts(sessionId)
+    const dbService = new ServerDatabaseService()
+    const contacts = await dbService.getContacts(sessionId)
     
     console.log('✅ Retrieved contacts:', contacts.length)
     

@@ -9,7 +9,7 @@ export async function POST(
     console.log('🔌 Connecting session:', sessionId)
 
     // Forward request to WhatsApp backend server
-    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3001'
+    const backendUrl = process.env.WHATSAPP_BACKEND_URL || 'http://localhost:3006'
     
     const response = await fetch(`${backendUrl}/api/sessions/${sessionId}/connect`, {
       method: 'POST',

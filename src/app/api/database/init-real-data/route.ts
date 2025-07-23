@@ -6,18 +6,18 @@ export async function POST(request: NextRequest) {
     console.log('🚀 Initializing real WhatsApp sessions data...')
 
     // Clear existing demo sessions first
-    const existingSessions = DatabaseService.getSessions()
+    const existingSessions = await DatabaseService.getSessions()
     console.log(`📊 Found ${existingSessions.length} existing sessions`)
 
     let removedCount = 0
     for (const session of existingSessions) {
-      if (session.name.includes('Business Account') || 
-          session.name.includes('Customer Support') || 
+      if (session.name.includes('Business Account') ||
+          session.name.includes('Customer Support') ||
           session.name.includes('Sales Team') ||
           session.name.includes('Demo') ||
           session.name.includes('Test')) {
         console.log(`🗑️ Removing demo session: ${session.name}`)
-        DatabaseService.deleteSession(session.id)
+        await DatabaseService.deleteSession(session.id)
         removedCount++
       }
     }
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const addedSessions = []
     for (const sessionData of realSessions) {
       try {
-        const session = DatabaseService.createSession(sessionData)
+        const session = await DatabaseService.createSession(sessionData)
         addedSessions.push(session)
         console.log(`✅ Added session: ${session.name} (${session.status})`)
       } catch (error) {
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify sessions were added
-    const finalSessions = DatabaseService.getSessions()
+    const finalSessions = await DatabaseService.getSessions()
     console.log(`📊 Database now contains ${finalSessions.length} sessions`)
 
     return NextResponse.json({
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const sessions = DatabaseService.getSessions()
+    const sessions = await DatabaseService.getSessions()
     
     return NextResponse.json({
       success: true,

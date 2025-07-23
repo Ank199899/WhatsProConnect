@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import DatabaseService from '@/lib/database'
+import { ServerDatabaseService } from '@/lib/database-server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,14 +7,15 @@ export async function POST(request: NextRequest) {
     
     console.log('💾 Saving message to database:', messageData)
     
-    const savedMessage = DatabaseService.saveMessage({
+    const dbService = new ServerDatabaseService()
+    const savedMessage = await dbService.saveMessage({
       session_id: messageData.session_id,
       whatsapp_message_id: messageData.whatsapp_message_id,
       from_number: messageData.from_number,
       to_number: messageData.to_number,
       body: messageData.body,
       message_type: messageData.message_type || 'text',
-      is_group_message: messageData.is_group_message ? 1 : 0, // Convert boolean to integer
+      is_group_message: messageData.is_group_message || false, // Keep as boolean for PostgreSQL
       author: messageData.author || null,
       timestamp: parseInt(messageData.timestamp) || Date.now()
     })
@@ -47,13 +48,14 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
     
+    const dbService = new ServerDatabaseService()
     let messages
     if (contactNumber) {
       console.log('📨 Getting messages for contact:', contactNumber)
-      messages = DatabaseService.getChatMessages(sessionId, contactNumber)
+      messages = await dbService.getChatMessages(sessionId, contactNumber)
     } else {
       console.log('📨 Getting all messages for session:', sessionId)
-      messages = DatabaseService.getMessages(sessionId)
+      messages = await dbService.getMessages(sessionId)
     }
     
     console.log('✅ Retrieved messages:', messages.length)

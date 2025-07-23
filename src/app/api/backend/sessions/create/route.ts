@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { addDemoSession } from '@/lib/sessionStorage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,11 +76,19 @@ export async function POST(request: NextRequest) {
     const demoSessionId = `demo_${Date.now()}`
     console.log('🔄 Creating demo session:', demoSessionId)
 
+    // Add to demo sessions list
+    const demoSession = addDemoSession({
+      sessionId: demoSessionId,
+      sessionName: name,
+      name: name
+    })
+
     return NextResponse.json({
       success: true,
       sessionId: demoSessionId,
       sessionName: name,
-      message: 'Demo session created (backend not available)'
+      message: 'Demo session created (backend not available)',
+      session: demoSession
     })
 
   } catch (error) {

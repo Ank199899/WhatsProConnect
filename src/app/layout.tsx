@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WhatsPro Connect - Professional WhatsApp Solution",
-  description: "Professional WhatsApp management platform with advanced messaging capabilities",
+  title: "WhatsPro Connect - Professional WhatsApp Business Solution",
+  description: "Professional WhatsApp business management platform with advanced messaging capabilities and multi-account support",
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
