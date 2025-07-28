@@ -9,10 +9,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const includeStats = searchParams.get('include_stats') === 'true'
 
-    let agents = DatabaseService.getAllAIAgents()
+    let agents = DatabaseService.getAllAIAgents() || []
 
     // Add provider information and stats if requested
-    if (includeStats) {
+    if (includeStats && Array.isArray(agents)) {
       agents = agents.map(agent => {
         // Get assigned providers
         const providers = DatabaseService.getAgentProviders(agent.id)

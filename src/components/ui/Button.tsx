@@ -4,6 +4,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive'
@@ -14,13 +15,51 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean
 }
 
-const buttonVariants = {
-  primary: 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl',
-  secondary: 'bg-gray-600 hover:bg-gray-700 text-white shadow-lg hover:shadow-xl',
-  outline: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white',
-  ghost: 'text-gray-600 hover:bg-gray-100:bg-gray-800',
-  destructive: 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl'
-}
+const getButtonVariants = (colors: any) => ({
+  primary: {
+    backgroundColor: colors.primary,
+    color: '#ffffff',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    '&:hover': {
+      backgroundColor: colors.secondary,
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+    }
+  },
+  secondary: {
+    backgroundColor: colors.secondary,
+    color: '#ffffff',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    '&:hover': {
+      backgroundColor: colors.accent,
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+    }
+  },
+  outline: {
+    border: `2px solid ${colors.primary}`,
+    color: colors.primary,
+    backgroundColor: 'transparent',
+    '&:hover': {
+      backgroundColor: colors.primary,
+      color: '#ffffff'
+    }
+  },
+  ghost: {
+    color: colors.text.secondary,
+    backgroundColor: 'transparent',
+    '&:hover': {
+      backgroundColor: `${colors.primary}10`
+    }
+  },
+  destructive: {
+    backgroundColor: '#EF4444',
+    color: '#ffffff',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    '&:hover': {
+      backgroundColor: '#DC2626',
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+    }
+  }
+})
 
 const sizeVariants = {
   sm: 'px-3 py-1.5 text-sm',
@@ -41,17 +80,24 @@ export function Button({
   disabled,
   ...props
 }: ButtonProps) {
+  // Theme hook
+  const { colors } = useTheme()
+  const buttonStyles = getButtonVariants(colors)[variant]
+
   return (
     <motion.button
       whileHover={{ scale: disabled || loading ? 1 : 1.02 }}
       whileTap={{ scale: disabled || loading ? 1 : 0.98 }}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed',
-        buttonVariants[variant],
+        'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed',
         sizeVariants[size],
         fullWidth && 'w-full',
         className
       )}
+      style={{
+        ...buttonStyles,
+        focusRingColor: colors.primary
+      }}
       disabled={disabled || loading}
       {...props}
     >

@@ -28,14 +28,15 @@ import Card, { CardHeader, CardContent } from './ui/Card'
 import Button from './ui/Button'
 import Input from './ui/Input'
 import Modal, { ModalHeader, ModalBody, ModalFooter } from './ui/Modal'
+import { useTheme } from '@/contexts/ThemeContext'
 import { cn, formatDate, getTimeAgo } from '@/lib/utils'
 
-const roleColors = {
-  admin: 'bg-red-100 text-red-800',
-  manager: 'bg-blue-100 text-blue-800',
-  agent: 'bg-green-100 text-green-800',
-  viewer: 'bg-gray-100 text-gray-800'
-}
+const getRoleColors = (colors: any) => ({
+  admin: { backgroundColor: '#EF444420', color: '#EF4444' },
+  manager: { backgroundColor: `${colors.primary}20`, color: colors.primary },
+  agent: { backgroundColor: `${colors.secondary}20`, color: colors.secondary },
+  viewer: { backgroundColor: `${colors.accent}20`, color: colors.accent }
+})
 
 const roleIcons = {
   admin: Crown,
@@ -63,6 +64,9 @@ interface Role {
 }
 
 export default function UserManagement() {
+  // Theme hook
+  const { colors, isDark } = useTheme()
+
   const [users, setUsers] = useState<LocalUser[]>([])
   const [filteredUsers, setFilteredUsers] = useState<LocalUser[]>([])
   const [availableRoles, setAvailableRoles] = useState<Role[]>([])

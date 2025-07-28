@@ -385,7 +385,7 @@ function UltimateAIManagement() {
       }
     }
   }, [])
-  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'providers' | 'analytics' | 'workflows' | 'settings'>('overview')
+  const [activeTab, setActiveTab] = useState<'providers' | 'agents'>('providers')
   const [agents, setAgents] = useState<AIAgent[]>([])
   const [providers, setProviders] = useState<AIProvider[]>([])
   const [loading, setLoading] = useState(true)
@@ -1283,9 +1283,9 @@ function UltimateAIManagement() {
     return (
       <div className="flex items-center justify-center h-64 bg-white border border-gray-200 rounded-2xl">
         <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-blue-600 border-r-purple-600"></div>
-          <div className="absolute inset-0 animate-ping rounded-full h-16 w-16 border-4 border-blue-400 opacity-20"></div>
-          <div className="absolute inset-2 animate-pulse rounded-full bg-blue-100 opacity-20"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent" style={{borderTopColor: '#296073', borderRightColor: '#3596B5'}}></div>
+          <div className="absolute inset-0 animate-ping rounded-full h-16 w-16 border-4 opacity-20" style={{borderColor: '#ADC5CF'}}></div>
+          <div className="absolute inset-2 animate-pulse rounded-full opacity-20" style={{backgroundColor: '#ADC5CF'}}></div>
         </div>
         <div className="ml-4">
           <h3 className="text-xl font-bold text-black">Loading AI Management</h3>
@@ -1325,8 +1325,8 @@ function UltimateAIManagement() {
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-              <Brain className="w-6 h-6 text-blue-600" />
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{backgroundColor: '#ADC5CF'}}>
+              <Brain className="w-6 h-6" style={{color: '#296073'}} />
             </div>
             <div>
               <h1 className="text-2xl font-semibold text-gray-900 mb-1">
@@ -1338,8 +1338,8 @@ function UltimateAIManagement() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{backgroundColor: '#ADC5CF'}}>
+              <div className="w-2 h-2 rounded-full" style={{backgroundColor: '#296073'}}></div>
               <span className="text-sm font-medium text-green-700">Active</span>
             </div>
           </div>
@@ -1372,7 +1372,8 @@ function UltimateAIManagement() {
 
             <Button
               onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="text-white"
+              style={{background: 'linear-gradient(to right, #296073, #3596B5)'}}
             >
               <Plus className="h-4 w-4 mr-2" />
               Create Agent
@@ -1390,16 +1391,12 @@ function UltimateAIManagement() {
         </div>
 
 
-      {/* Professional Navigation Tabs */}
+      {/* Simple Navigation Tabs */}
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-1 mb-6">
         <div className="flex overflow-x-auto">
           {[
-            { id: 'overview', label: 'Overview', icon: Gauge },
-            { id: 'agents', label: 'AI Agents', icon: Bot },
-            { id: 'providers', label: 'Providers', icon: Brain },
-            { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-            { id: 'workflows', label: 'Workflows', icon: Workflow },
-            { id: 'settings', label: 'Settings', icon: Settings }
+            { id: 'providers', label: 'AI Providers', icon: Brain },
+            { id: 'agents', label: 'AI Agents', icon: Bot }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1407,9 +1404,10 @@ function UltimateAIManagement() {
               className={cn(
                 'flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 min-w-fit',
                 activeTab === tab.id
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               )}
+              style={activeTab === tab.id ? {background: 'linear-gradient(to right, #296073, #3596B5)'} : {}}
             >
               <tab.icon className="h-4 w-4" />
               <span className="whitespace-nowrap">{tab.label}</span>
@@ -1419,423 +1417,77 @@ function UltimateAIManagement() {
       </div>
 
       {/* Content Based on Active Tab */}
-      {activeTab === 'overview' && (
+      {activeTab === 'providers' && (
         <div className="space-y-6">
-          {/* Overview Header */}
+          {/* Providers Header */}
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                  <Gauge className="h-5 w-5 text-blue-600" />
+                <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
+                  <Brain className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Overview</h2>
-                  <p className="text-gray-600">AI system status and metrics</p>
+                  <h2 className="text-xl font-semibold text-gray-900">AI Providers</h2>
+                  <p className="text-gray-600">Manage AI service providers and API keys</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm font-medium text-green-700">All Systems Online</span>
+              <div className="flex items-center gap-4">
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-gray-900">{providers.length}</div>
+                  <div className="text-xs text-gray-600">Total</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-green-600">{providers.filter(p => p.isActive).length}</div>
+                  <div className="text-xs text-gray-600">Active</div>
+                </div>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Button
-                onClick={() => setShowCreateModal(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => setShowProviderModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Agent
-              </Button>
-              <Button variant="outline" className="border-gray-300 hover:bg-gray-50">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                View Analytics
-              </Button>
-              <Button variant="outline" className="border-gray-300 hover:bg-gray-50">
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
+                Add Provider
               </Button>
             </div>
           </div>
 
-          {/* Stats Dashboard */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* AI Agents Card */}
-            <Card className="p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                  <Bot className="h-5 w-5 text-blue-600" />
+          {/* Providers Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {providers.map((provider) => (
+              <Card key={provider.id} className="p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <Brain className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className={`w-2 h-2 rounded-full ${provider.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                 </div>
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">AI Agents</p>
-                <p className="text-2xl font-semibold text-gray-900 mb-2">{dashboardMetrics.totalAgents}</p>
-                <div className="flex items-center gap-1 text-xs text-green-600">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>{dashboardMetrics.activeAgents} Active</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Active Providers Card */}
-            <Card className="p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                  <Brain className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">AI Providers</p>
-                <p className="text-2xl font-semibold text-gray-900 mb-2">
-                  {dashboardMetrics.totalProviders}
-                </p>
-                <div className="flex items-center gap-1 text-xs text-green-600">
-                  <CheckCircle className="h-3 w-3" />
-                  <span>{dashboardMetrics.activeProviders} Online</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Total Responses Card */}
-            <Card className="p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="h-5 w-5 text-purple-600" />
-                </div>
-                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Requests</p>
-                <p className="text-2xl font-semibold text-gray-900 mb-2">
-                  {analytics.totalRequests.toLocaleString()}
-                </p>
-                <div className="flex items-center gap-1 text-xs text-purple-600">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+45% this week</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Response Time Card */}
-            <Card className="p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
-                  <Lightning className="h-5 w-5 text-orange-600" />
-                </div>
-                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Avg Response Time</p>
-                <p className="text-2xl font-semibold text-gray-900 mb-2">
-                  {analytics.avgResponseTime}ms
-                </p>
-                <div className="flex items-center gap-1 text-xs text-orange-600">
-                  <Lightning className="h-3 w-3" />
-                  <span>Fast</span>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Enhanced Real-time Activity Feed & Performance Dashboard */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Live Activity Feed - Enhanced */}
-            <Card className="lg:col-span-2 p-6 bg-gradient-to-br from-white to-blue-50/30 border border-blue-200/50 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-400/5 rounded-full blur-3xl animate-float"></div>
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl shadow-lg">
-                      <Activity className="h-6 w-6 text-white" />
-                    </div>
-                    Live Activity Feed
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-2xl border border-green-200">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-xs text-green-700 font-bold">LIVE STREAMING</span>
-                    </div>
-                    <Button variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                      <Eye className="h-4 w-4 mr-2" />
-                      View All
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">{provider.displayName}</h3>
+                  <p className="text-sm text-gray-600 mb-3">{provider.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs px-2 py-1 rounded-full ${provider.hasApiKey ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {provider.hasApiKey ? '✓ API Key Set' : '✗ No API Key'}
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedProvider(provider)
+                        setShowProviderConfigModal(true)
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Setup
                     </Button>
                   </div>
                 </div>
-                <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-hide">
-                  {[
-                    { agent: 'Customer Support Pro', action: 'Responded to urgent query', time: '2s ago', type: 'success', priority: 'high' },
-                    { agent: 'Sales Assistant AI', action: 'Generated qualified lead', time: '15s ago', type: 'info', priority: 'medium' },
-                    { agent: 'Tech Support Bot', action: 'Resolved critical ticket', time: '1m ago', type: 'success', priority: 'high' },
-                    { agent: 'Marketing AI Pro', action: 'Created campaign strategy', time: '3m ago', type: 'warning', priority: 'low' },
-                    { agent: 'Analytics Bot', action: 'Generated performance report', time: '5m ago', type: 'info', priority: 'medium' },
-                    { agent: 'Security AI', action: 'Detected threat pattern', time: '8m ago', type: 'warning', priority: 'high' },
-                    { agent: 'Content AI', action: 'Generated social media post', time: '12m ago', type: 'success', priority: 'low' }
-                  ].map((activity, index) => (
-                    <div key={index} className="group flex items-center gap-4 p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 hover:border-blue-200 hover:shadow-lg transition-all duration-300 hover:scale-[1.02]">
-                      <div className="relative">
-                        <div className={`w-3 h-3 rounded-full shadow-lg ${
-                          activity.type === 'success' ? 'bg-green-500 shadow-green-500/50' :
-                          activity.type === 'warning' ? 'bg-yellow-500 shadow-yellow-500/50' : 'bg-blue-500 shadow-blue-500/50'
-                        } ${activity.priority === 'high' ? 'animate-pulse' : ''}`}></div>
-                        {activity.priority === 'high' && (
-                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-bold text-gray-900">{activity.agent}</p>
-                          {activity.priority === 'high' && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">HIGH</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-600 font-medium">{activity.action}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs text-gray-500 font-medium">{activity.time}</span>
-                        <div className="w-1 h-1 bg-gray-300 rounded-full mt-1 mx-auto group-hover:bg-blue-400 transition-colors duration-300"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>
+              </Card>
+            ))}
 
-            {/* Performance Insights - Ultra Enhanced */}
-            <Card className="p-6 bg-gradient-to-br from-white to-purple-50/30 border border-purple-200/50 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-400/5 rounded-full blur-2xl animate-float-delayed"></div>
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg">
-                      <TrendingUp className="h-6 w-6 text-white" />
-                    </div>
-                    Performance Insights
-                  </h3>
-                  <Button variant="outline" size="sm" className="border-purple-300 text-purple-700 hover:bg-purple-50">
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Details
-                  </Button>
-                </div>
-                <div className="space-y-5">
-                  {/* Success Rate */}
-                  <div className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        Success Rate
-                      </span>
-                      <span className="text-sm font-bold text-green-600">95%</span>
-                    </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="w-[95%] h-3 bg-gradient-to-r from-green-400 to-green-600 rounded-full shadow-lg shadow-green-500/30 animate-pulse-glow"></div>
-                    </div>
-                  </div>
 
-                  {/* User Satisfaction */}
-                  <div className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <Star className="h-4 w-4 text-blue-500" />
-                        User Satisfaction
-                      </span>
-                      <span className="text-sm font-bold text-blue-600">92%</span>
-                    </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="w-[92%] h-3 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full shadow-lg shadow-blue-500/30 animate-pulse-glow"></div>
-                    </div>
-                  </div>
-
-                  {/* Response Speed */}
-                  <div className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <Lightning className="h-4 w-4 text-purple-500" />
-                        Response Speed
-                      </span>
-                      <span className="text-sm font-bold text-purple-600">88%</span>
-                    </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="w-[88%] h-3 bg-gradient-to-r from-purple-400 to-purple-600 rounded-full shadow-lg shadow-purple-500/30 animate-pulse-glow"></div>
-                    </div>
-                  </div>
-
-                  {/* Cost Efficiency */}
-                  <div className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <DollarSign className="h-4 w-4 text-orange-500" />
-                        Cost Efficiency
-                      </span>
-                      <span className="text-sm font-bold text-orange-600">96%</span>
-                    </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="w-[96%] h-3 bg-gradient-to-r from-orange-400 to-orange-600 rounded-full shadow-lg shadow-orange-500/30 animate-pulse-glow"></div>
-                    </div>
-                  </div>
-
-                  {/* AI Learning Rate */}
-                  <div className="group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <Brain className="h-4 w-4 text-indigo-500" />
-                        AI Learning Rate
-                      </span>
-                      <span className="text-sm font-bold text-indigo-600">94%</span>
-                    </div>
-                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="w-[94%] h-3 bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-full shadow-lg shadow-indigo-500/30 animate-pulse-glow"></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Performance Summary */}
-                <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl border border-green-200/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-500 rounded-xl">
-                      <Crown className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-green-800">Excellent Performance</p>
-                      <p className="text-xs text-green-600">All systems operating at peak efficiency</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Advanced System Health & Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* System Health Monitor */}
-            <Card className="p-6 bg-gradient-to-br from-white to-green-50/30 border border-green-200/50 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-green-400/5 rounded-full blur-2xl animate-float"></div>
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl shadow-lg">
-                      <Gauge className="h-6 w-6 text-white" />
-                    </div>
-                    System Health Monitor
-                  </h3>
-                  <div className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-2xl border border-green-200">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs text-green-700 font-bold">ALL SYSTEMS GO</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="text-center p-4 bg-white/80 rounded-2xl border border-gray-100">
-                    <div className="text-2xl font-black text-green-600 mb-1">
-                      {dashboardMetrics.systemUptime.toFixed(1)}%
-                    </div>
-                    <div className="text-xs text-gray-600 font-semibold">Uptime</div>
-                  </div>
-                  <div className="text-center p-4 bg-white/80 rounded-2xl border border-gray-100">
-                    <div className="text-2xl font-black text-blue-600 mb-1">
-                      {analytics.avgResponseTime > 0 ? `${(analytics.avgResponseTime / 1000).toFixed(1)}s` : '0s'}
-                    </div>
-                    <div className="text-xs text-gray-600 font-semibold">Avg Response</div>
-                  </div>
-                  <div className="text-center p-4 bg-white/80 rounded-2xl border border-gray-100">
-                    <div className="text-2xl font-black text-purple-600 mb-1">
-                      {analytics.totalRequests > 0 ? `${Math.round(analytics.totalRequests / 24)}` : '0'}
-                    </div>
-                    <div className="text-xs text-gray-600 font-semibold">Requests/Hour</div>
-                  </div>
-                  <div className="text-center p-4 bg-white/80 rounded-2xl border border-gray-100">
-                    <div className="text-2xl font-black text-orange-600 mb-1">
-                      {analytics.successRate > 0 ? `${(100 - analytics.successRate).toFixed(2)}%` : '0%'}
-                    </div>
-                    <div className="text-xs text-gray-600 font-semibold">Error Rate</div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {[
-                    { service: 'AI Processing Engine', status: 'optimal', load: 78 },
-                    { service: 'Message Queue', status: 'optimal', load: 45 },
-                    { service: 'Database Cluster', status: 'optimal', load: 62 },
-                    { service: 'API Gateway', status: 'optimal', load: 34 }
-                  ].map((service, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-white/60 rounded-xl border border-gray-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-semibold text-gray-700">{service.service}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-2 bg-gray-200 rounded-full">
-                          <div
-                            className="h-2 bg-gradient-to-r from-green-400 to-green-600 rounded-full"
-                            style={{ width: `${service.load}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs text-gray-500 font-medium">{service.load}%</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>
-
-            {/* Quick Actions Panel */}
-            <Card className="p-6 bg-gradient-to-br from-white to-blue-50/30 border border-blue-200/50 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-400/5 rounded-full blur-2xl animate-float-delayed"></div>
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl shadow-lg">
-                      <Rocket className="h-6 w-6 text-white" />
-                    </div>
-                    Quick Actions
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <Button className="h-16 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 rounded-2xl flex flex-col items-center justify-center gap-2">
-                    <Plus className="h-5 w-5" />
-                    <span className="text-xs font-bold">New Agent</span>
-                  </Button>
-                  <Button className="h-16 bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 rounded-2xl flex flex-col items-center justify-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    <span className="text-xs font-bold">Configure</span>
-                  </Button>
-                  <Button className="h-16 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 rounded-2xl flex flex-col items-center justify-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    <span className="text-xs font-bold">Analytics</span>
-                  </Button>
-                  <Button className="h-16 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 rounded-2xl flex flex-col items-center justify-center gap-2">
-                    <Workflow className="h-5 w-5" />
-                    <span className="text-xs font-bold">Workflows</span>
-                  </Button>
-                </div>
-
-                {/* Recent Alerts */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                    <Bell className="h-4 w-4 text-yellow-500" />
-                    Recent Alerts
-                  </h4>
-                  {[
-                    { type: 'info', message: 'New AI model available for upgrade', time: '5m ago' },
-                    { type: 'success', message: 'Performance optimization completed', time: '1h ago' },
-                    { type: 'warning', message: 'High traffic detected on Agent #3', time: '2h ago' }
-                  ].map((alert, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-white/60 rounded-xl border border-gray-100">
-                      <div className={`w-2 h-2 rounded-full ${
-                        alert.type === 'success' ? 'bg-green-500' :
-                        alert.type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'
-                      }`}></div>
-                      <div className="flex-1">
-                        <p className="text-xs text-gray-700 font-medium">{alert.message}</p>
-                      </div>
-                      <span className="text-xs text-gray-500">{alert.time}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>
           </div>
         </div>
       )}
@@ -3988,7 +3640,8 @@ function UltimateAIManagement() {
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="text-white"
+                  style={{background: 'linear-gradient(to right, #296073, #3596B5)'}}
                 >
                   <Rocket className="h-4 w-4 mr-2" />
                   {editingAgent ? 'Update Agent' : 'Create Agent'}

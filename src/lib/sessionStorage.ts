@@ -12,7 +12,7 @@ export interface SessionData {
   isDemo?: boolean
 }
 
-// Demo sessions storage using global object to persist across module reloads
+// ⚠️ DEPRECATED: All sessions now stored in cloud database server
 declare global {
   var demoSessionsStorage: SessionData[] | undefined
 }
@@ -23,6 +23,8 @@ if (!global.demoSessionsStorage) {
 }
 
 const demoSessions = global.demoSessionsStorage
+
+console.warn('⚠️ Demo session storage is deprecated. All sessions now stored in cloud database server.')
 
 // Function to add demo session
 export function addDemoSession(sessionData: any): SessionData {

@@ -107,7 +107,27 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const templateId = searchParams.get('id')
+    const templateIds = searchParams.get('ids') // For bulk delete
 
+    // Bulk delete
+    if (templateIds) {
+      const ids = templateIds.split(',')
+      console.log('🗑️ Bulk deleting templates:', ids)
+
+      let deletedCount = 0
+      for (const id of ids) {
+        const deleted = DatabaseService.deleteTemplate(id.trim())
+        if (deleted) deletedCount++
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `${deletedCount} templates deleted successfully`,
+        deletedCount
+      })
+    }
+
+    // Single delete
     if (!templateId) {
       return NextResponse.json({
         success: false,

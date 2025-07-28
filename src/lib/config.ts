@@ -38,22 +38,36 @@ export const URLS = {
 
 // Dynamic URL Resolution
 export function getBackendUrl(): string {
-  // Priority: Environment variable > Dynamic detection > Default
+  // Priority: Client-side env var > Server-side env var > Dynamic detection > Default
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WHATSAPP_BACKEND_URL) {
+    console.log('🔧 Using client-side NEXT_PUBLIC_WHATSAPP_BACKEND_URL:', process.env.NEXT_PUBLIC_WHATSAPP_BACKEND_URL)
+    return process.env.NEXT_PUBLIC_WHATSAPP_BACKEND_URL
+  }
+
   if (process.env.WHATSAPP_BACKEND_URL) {
+    console.log('🔧 Using server-side WHATSAPP_BACKEND_URL:', process.env.WHATSAPP_BACKEND_URL)
     return process.env.WHATSAPP_BACKEND_URL
   }
 
-  // For server-side (API routes) - use localhost
+  // For server-side (API routes) - always use localhost for development
   if (typeof window === 'undefined') {
+    console.log('🔧 Using server-side BACKEND_LOCAL:', URLS.BACKEND_LOCAL)
     return URLS.BACKEND_LOCAL
   }
 
-  // For client-side - always use current hostname with backend port
+  // For client-side - in development, always use localhost
+  if (isDevelopment) {
+    console.log('🔧 Using client-side BACKEND_LOCAL:', URLS.BACKEND_LOCAL)
+    return URLS.BACKEND_LOCAL
+  }
+
+  // For production - use current hostname with backend port
   const hostname = window.location.hostname
   const protocol = window.location.protocol
+  const productionUrl = `${protocol}//${hostname}:${PORTS.BACKEND}`
 
-  // Use same hostname as frontend but with backend port
-  return `${protocol}//${hostname}:${PORTS.BACKEND}`
+  console.log('🔧 Using production URL:', productionUrl)
+  return productionUrl
 }
 
 export function getFrontendUrl(): string {

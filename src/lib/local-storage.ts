@@ -53,30 +53,25 @@ export interface LocalAPIKey {
 }
 
 class LocalStorageService {
+  // ⚠️ DEPRECATED: All data now goes to cloud database server
+  // This service is disabled to prevent local storage usage
+
   private getStorageKey(type: string): string {
+    console.warn('⚠️ LocalStorage is disabled. All data goes to cloud database server.')
     return `whatsapp_${type}`
   }
 
   private getData<T>(type: string): T[] {
-    if (typeof window === 'undefined') return []
-    
-    try {
-      const data = localStorage.getItem(this.getStorageKey(type))
-      return data ? JSON.parse(data) : []
-    } catch (error) {
-      console.error(`Error reading ${type} from localStorage:`, error)
-      return []
-    }
+    console.warn('⚠️ LocalStorage is completely disabled. Use ServerStorageService instead.')
+    console.warn('⚠️ Import: import { serverStorage } from "./server-storage"')
+    return []
   }
 
   private setData<T>(type: string, data: T[]): void {
-    if (typeof window === 'undefined') return
-    
-    try {
-      localStorage.setItem(this.getStorageKey(type), JSON.stringify(data))
-    } catch (error) {
-      console.error(`Error saving ${type} to localStorage:`, error)
-    }
+    console.warn('⚠️ LocalStorage is completely disabled. Use ServerStorageService instead.')
+    console.warn('⚠️ Import: import { serverStorage } from "./server-storage"')
+    // Completely disabled - no operations allowed
+    throw new Error('LocalStorage is disabled. Use ServerStorageService instead.')
   }
 
   // Sessions

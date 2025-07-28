@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -H 0.0.0.0 -p 3008",
+    "dev-no-refresh": "FAST_REFRESH=false next dev -H 0.0.0.0 -p 3008",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3008",
     "lint": "next lint",
@@ -33,6 +34,7 @@
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
+    "dns": "^0.2.2",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "framer-motion": "^12.23.6",

@@ -3,6 +3,7 @@
 import React, { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Eye, EyeOff } from 'lucide-react'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
@@ -16,7 +17,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 const inputVariants = {
   default: 'border border-gray-300 bg-white focus:border-blue-500 focus:ring-blue-500',
-  filled: 'border-0 bg-gray-100 focus:bg-white:bg-gray-800 focus:ring-blue-500',
+  filled: 'border-0 bg-gray-100 focus:bg-white focus:ring-blue-500',
   outlined: 'border-2 border-gray-300 bg-transparent focus:border-blue-500'
 }
 
@@ -38,6 +39,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
   className,
   ...props
 }, ref) => {
+  // Theme hook
+  const { colors } = useTheme()
+
   const [showPassword, setShowPassword] = React.useState(false)
   const isPassword = type === 'password'
   const inputType = isPassword && showPassword ? 'text' : type
@@ -45,7 +49,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          className="block text-sm font-medium mb-2 transition-colors duration-300"
+          style={{ color: colors.text.primary }}
+        >
           {label}
         </label>
       )}

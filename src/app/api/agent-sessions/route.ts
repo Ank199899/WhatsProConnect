@@ -6,7 +6,16 @@ let agentSessions: any[] = []
 // Function to get real WhatsApp sessions for agent assignment
 async function getAvailableWhatsAppSessions() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3005'}/api/whatsapp/sessions`)
+    // Use current host for internal API calls during build
+    const baseUrl = process.env.NEXTAUTH_URL ||
+                   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
+                   'http://localhost:3008'
+
+    const response = await fetch(`${baseUrl}/api/whatsapp/sessions`, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
     if (response.ok) {
       const data = await response.json()
       return data.sessions || []

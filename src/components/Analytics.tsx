@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { WhatsAppManagerClient, SessionStatus } from '@/lib/whatsapp-manager'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface AnalyticsProps {
   whatsappManager: WhatsAppManagerClient
@@ -20,6 +21,9 @@ interface SessionStats {
 }
 
 export default function Analytics({ whatsappManager, sessions }: AnalyticsProps) {
+  // Theme hook
+  const { colors, isDark } = useTheme()
+
   const [stats, setStats] = useState<SessionStats[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -66,7 +70,10 @@ export default function Analytics({ whatsappManager, sessions }: AnalyticsProps)
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div
+          className="animate-spin rounded-full h-12 w-12 border-b-2"
+          style={{ borderColor: colors.primary }}
+        ></div>
       </div>
     )
   }
@@ -77,36 +84,81 @@ export default function Analytics({ whatsappManager, sessions }: AnalyticsProps)
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500 mb-1">Total Sessions</div>
+        <div
+          className="rounded-lg shadow p-6 transition-colors duration-300"
+          style={{ backgroundColor: colors.background.secondary }}
+        >
+          <div
+            className="text-sm font-medium mb-1"
+            style={{ color: colors.text.secondary }}
+          >Total Sessions</div>
           <div className="flex items-end space-x-2">
-            <div className="text-3xl font-bold text-gray-900">{totalStats.totalSessions}</div>
-            <div className="text-sm text-green-600 mb-1">
+            <div
+              className="text-3xl font-bold"
+              style={{ color: colors.text.primary }}
+            >{totalStats.totalSessions}</div>
+            <div
+              className="text-sm mb-1"
+              style={{ color: colors.primary }}
+            >
               {totalStats.activeSessions} active
             </div>
           </div>
         </div>
-        
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500 mb-1">Total Contacts</div>
-          <div className="text-3xl font-bold text-gray-900">{totalStats.totalContacts}</div>
+
+        <div
+          className="rounded-lg shadow p-6 transition-colors duration-300"
+          style={{ backgroundColor: colors.background.secondary }}
+        >
+          <div
+            className="text-sm font-medium mb-1"
+            style={{ color: colors.text.secondary }}
+          >Total Contacts</div>
+          <div
+            className="text-3xl font-bold"
+            style={{ color: colors.text.primary }}
+          >{totalStats.totalContacts}</div>
         </div>
         
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500 mb-1">Total Messages</div>
+        <div
+          className="rounded-lg shadow p-6 transition-colors duration-300"
+          style={{ backgroundColor: colors.background.secondary }}
+        >
+          <div
+            className="text-sm font-medium mb-1"
+            style={{ color: colors.text.secondary }}
+          >Total Messages</div>
           <div className="flex items-end space-x-2">
-            <div className="text-3xl font-bold text-gray-900">{totalStats.totalMessages}</div>
-            <div className="text-sm text-blue-600 mb-1">
+            <div
+              className="text-3xl font-bold"
+              style={{ color: colors.text.primary }}
+            >{totalStats.totalMessages}</div>
+            <div
+              className="text-sm mb-1"
+              style={{ color: colors.accent }}
+            >
               {totalStats.messagesLast24h} in last 24h
             </div>
           </div>
         </div>
-        
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm font-medium text-gray-500 mb-1">Bulk Messages</div>
+
+        <div
+          className="rounded-lg shadow p-6 transition-colors duration-300"
+          style={{ backgroundColor: colors.background.secondary }}
+        >
+          <div
+            className="text-sm font-medium mb-1"
+            style={{ color: colors.text.secondary }}
+          >Bulk Messages</div>
           <div className="flex items-end space-x-2">
-            <div className="text-3xl font-bold text-gray-900">{totalStats.totalBulkMessagesSent}</div>
-            <div className="text-sm text-purple-600 mb-1">
+            <div
+              className="text-3xl font-bold"
+              style={{ color: colors.text.primary }}
+            >{totalStats.totalBulkMessagesSent}</div>
+            <div
+              className="text-sm mb-1"
+              style={{ color: colors.secondary }}
+            >
               {totalStats.totalBulkCampaigns} campaigns
             </div>
           </div>
@@ -114,28 +166,58 @@ export default function Analytics({ whatsappManager, sessions }: AnalyticsProps)
       </div>
 
       {/* Session Stats Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Session Statistics</h3>
+      <div
+        className="rounded-lg shadow overflow-hidden transition-colors duration-300"
+        style={{ backgroundColor: colors.background.secondary }}
+      >
+        <div
+          className="px-6 py-4 border-b transition-colors duration-300"
+          style={{ borderColor: `${colors.border}40` }}
+        >
+          <h3
+            className="text-lg font-semibold"
+            style={{ color: colors.text.primary }}
+          >Session Statistics</h3>
         </div>
-        
+
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table
+            className="min-w-full divide-y transition-colors duration-300"
+            style={{ borderColor: `${colors.border}40` }}
+          >
+            <thead
+              className="transition-colors duration-300"
+              style={{ backgroundColor: colors.background.tertiary }}
+            >
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider"
+                  style={{ color: colors.text.secondary }}
+                >
                   Session
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider"
+                  style={{ color: colors.text.secondary }}
+                >
                   Phone Number
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider"
+                  style={{ color: colors.text.secondary }}
+                >
                   Contacts
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider"
+                  style={{ color: colors.text.secondary }}
+                >
                   Messages
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider"
+                  style={{ color: colors.text.secondary }}
+                >
                   Last 24h
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">

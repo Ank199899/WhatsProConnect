@@ -3,6 +3,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'elevated' | 'outlined' | 'glass'
@@ -11,12 +12,25 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   clickable?: boolean
 }
 
-const cardVariants = {
-  default: 'bg-white shadow-sm',
-  elevated: 'bg-white shadow-lg',
-  outlined: 'bg-white border border-gray-200',
-  glass: 'bg-white/80 backdrop-blur-sm border border-white/20'
-}
+const getCardVariants = (colors: any) => ({
+  default: {
+    backgroundColor: colors.background.primary,
+    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
+  },
+  elevated: {
+    backgroundColor: colors.background.primary,
+    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+  },
+  outlined: {
+    backgroundColor: colors.background.primary,
+    border: `1px solid ${colors.border}`
+  },
+  glass: {
+    backgroundColor: `${colors.background.primary}CC`,
+    backdropFilter: 'blur(4px)',
+    border: `1px solid ${colors.background.primary}33`
+  }
+})
 
 const paddingVariants = {
   none: '',
@@ -35,18 +49,21 @@ export function Card({
   className,
   ...props
 }: CardProps) {
+  // Theme hook
+  const { colors } = useTheme()
+  const cardStyles = getCardVariants(colors)[variant]
+
   return (
     <motion.div
       whileHover={hover || clickable ? { y: -2, scale: 1.01 } : undefined}
       whileTap={clickable ? { scale: 0.99 } : undefined}
       className={cn(
         'rounded-xl transition-all duration-200',
-        cardVariants[variant],
         paddingVariants[padding],
-        hover && 'hover:shadow-lg',
         clickable && 'cursor-pointer',
         className
       )}
+      style={cardStyles}
       {...props}
     >
       {children}

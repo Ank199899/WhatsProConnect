@@ -23,6 +23,20 @@ import {
   BarChart3
 } from 'lucide-react'
 import Button from './ui/Button'
+import { useTheme } from '@/contexts/ThemeContext'
+
+interface TemplateGroup {
+  id: string
+  name: string
+  description?: string
+  color: string
+  icon?: string
+  is_active: boolean
+  template_count: number
+  created_at: string
+  updated_at: string
+  created_by: string
+}
 
 interface Template {
   id: string
@@ -40,6 +54,8 @@ interface Template {
   rating: number
   tags: string[]
   preview?: string
+  group_id?: string
+  group_name?: string
   // Media fields
   mediaUrl?: string
   mediaType?: 'image' | 'video' | 'document' | 'audio'
@@ -70,6 +86,9 @@ const templateTypes = [
 ]
 
 function TemplateManagementComponent() {
+  // Theme hook
+  const { colors, isDark } = useTheme()
+
   // Simple state management without real-time context dependency
   const [isConnected] = useState(false) // Fallback connection status
   const [hasError, setHasError] = useState(false)
@@ -79,11 +98,16 @@ function TemplateManagementComponent() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedType, setSelectedType] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
+  const [selectedGroup, setSelectedGroup] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [showGroupModal, setShowGroupModal] = useState(false)
+  const [showGroupEditModal, setShowGroupEditModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [selectedTemplateGroup, setSelectedTemplateGroup] = useState<TemplateGroup | null>(null)
   const [loading, setLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'groups'>('groups')
 
   // Bulk selection state
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
@@ -91,6 +115,7 @@ function TemplateManagementComponent() {
 
   // Local state for templates management
   const [localTemplates, setLocalTemplates] = useState<Template[]>([])
+  const [templateGroups, setTemplateGroups] = useState<TemplateGroup[]>([])
 
   // Use local templates as the main source
   const displayTemplates = localTemplates
@@ -103,6 +128,7 @@ function TemplateManagementComponent() {
     variables: [] as string[],
     language: 'en',
     tags: [] as string[],
+    group_id: '',
     // Media fields
     mediaUrl: '',
     mediaType: undefined as Template['mediaType'],
@@ -111,12 +137,22 @@ function TemplateManagementComponent() {
     mediaSize: 0
   })
 
+  const [groupFormData, setGroupFormData] = useState({
+    name: '',
+    description: '',
+    color: '#3B82F6',
+    icon: 'folder'
+  })
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   useEffect(() => {
     const initializeComponent = async () => {
       try {
-        await loadTemplates()
+        await Promise.all([
+          loadTemplates(),
+          loadTemplateGroups()
+        ])
       } catch (error) {
         console.error('Error initializing TemplateManagement:', error)
         setHasError(true)
@@ -194,6 +230,27 @@ function TemplateManagementComponent() {
     }
   }
 
+  const loadTemplateGroups = async () => {
+    try {
+      console.log('📁 Loading template groups from API...')
+
+      const response = await fetch('/api/template-groups')
+      const result = await response.json()
+
+      if (result.success) {
+        console.log('📁 Loaded template groups from API:', result.groups)
+        setTemplateGroups(result.groups || [])
+      } else {
+        console.error('Failed to load template groups:', result.error)
+        setTemplateGroups([])
+      }
+
+    } catch (error) {
+      console.error('Error loading template groups:', error)
+      setTemplateGroups([])
+    }
+  }
+
   const loadTemplates = async () => {
     setLoading(true)
     try {
@@ -222,12 +279,13 @@ function TemplateManagementComponent() {
     const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          template.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          template.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-    
+
     const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory
     const matchesType = selectedType === 'all' || template.type === selectedType
     const matchesStatus = selectedStatus === 'all' || template.status === selectedStatus
-    
-    return matchesSearch && matchesCategory && matchesType && matchesStatus
+    const matchesGroup = selectedGroup === 'all' || template.group_id === selectedGroup || (!template.group_id && selectedGroup === 'ungrouped')
+
+    return matchesSearch && matchesCategory && matchesType && matchesStatus && matchesGroup
   })
 
   const handleCreateTemplate = async () => {
@@ -262,6 +320,7 @@ function TemplateManagementComponent() {
         language: formData.language,
         status: 'active',
         tags: formData.tags,
+        group_id: formData.group_id || null,
         mediaUrl: formData.mediaUrl || null,
         mediaType: formData.mediaType || null,
         mediaCaption: formData.mediaCaption || null
@@ -308,40 +367,112 @@ function TemplateManagementComponent() {
     return matches ? matches.map(match => match.replace(/[{}]/g, '')) : []
   }
 
-  // Export templates to JSON file
-  const handleExportTemplates = async () => {
+  // Create template group
+  const handleCreateGroup = async () => {
     try {
-      console.log('📤 Exporting templates...')
+      setLoading(true)
 
-      const response = await fetch('/api/templates')
+      if (!groupFormData.name.trim()) {
+        alert('Please enter a group name')
+        return
+      }
+
+      console.log('Creating template group with data:', groupFormData)
+
+      const response = await fetch('/api/template-groups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(groupFormData)
+      })
+
       const result = await response.json()
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch templates')
+        throw new Error(result.error || 'Failed to create group')
       }
 
-      const templates = result.templates || []
-      const dataStr = JSON.stringify(templates, null, 2)
+      console.log('✅ Group created successfully:', result.group)
+
+      // Refresh groups list
+      await loadTemplateGroups()
+
+      // Reset form and close modal
+      setGroupFormData({
+        name: '',
+        description: '',
+        color: '#3B82F6',
+        icon: 'folder'
+      })
+      setShowGroupModal(false)
+
+      alert('Template group created successfully!')
+
+    } catch (error) {
+      console.error('Error creating template group:', error)
+      alert('Error creating template group. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Export templates and groups to JSON file
+  const handleExportTemplates = async () => {
+    try {
+      console.log('📤 Exporting templates and groups...')
+
+      // Fetch both templates and groups
+      const [templatesResponse, groupsResponse] = await Promise.all([
+        fetch('/api/templates'),
+        fetch('/api/template-groups')
+      ])
+
+      const templatesResult = await templatesResponse.json()
+      const groupsResult = await groupsResponse.json()
+
+      if (!templatesResult.success) {
+        throw new Error(templatesResult.error || 'Failed to fetch templates')
+      }
+
+      const templates = templatesResult.templates || []
+      const groups = groupsResult.success ? (groupsResult.groups || []) : []
+
+      // Create export data with both templates and groups
+      const exportData = {
+        version: '2.0',
+        exported_at: new Date().toISOString(),
+        template_groups: groups,
+        templates: templates,
+        metadata: {
+          total_groups: groups.length,
+          total_templates: templates.length,
+          grouped_templates: templates.filter(t => t.group_id).length,
+          ungrouped_templates: templates.filter(t => !t.group_id).length
+        }
+      }
+
+      const dataStr = JSON.stringify(exportData, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
 
       const url = URL.createObjectURL(dataBlob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `whatsapp-templates-${new Date().toISOString().split('T')[0]}.json`
+      link.download = `whatsapp-templates-with-groups-${new Date().toISOString().split('T')[0]}.json`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      console.log('✅ Templates exported successfully')
-      alert(`Successfully exported ${templates.length} templates!`)
+      console.log('✅ Templates and groups exported successfully')
+      alert(`Successfully exported ${templates.length} templates and ${groups.length} groups!`)
     } catch (error) {
-      console.error('Error exporting templates:', error)
-      alert('Error exporting templates. Please try again.')
+      console.error('Error exporting templates and groups:', error)
+      alert('Error exporting templates and groups. Please try again.')
     }
   }
 
-  // Import templates from JSON file
+  // Import templates and groups from JSON file
   const handleImportTemplates = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -352,21 +483,78 @@ function TemplateManagementComponent() {
 
       try {
         setLoading(true)
-        console.log('📥 Importing templates...')
+        console.log('📥 Importing templates and groups...')
 
         const text = await file.text()
-        const importedTemplates = JSON.parse(text)
+        const importedData = JSON.parse(text)
 
-        if (!Array.isArray(importedTemplates)) {
+        // Check if it's the new format with groups or old format (just templates array)
+        let templatesToImport = []
+        let groupsToImport = []
+
+        if (Array.isArray(importedData)) {
+          // Old format - just templates array
+          templatesToImport = importedData
+          console.log('📥 Importing old format (templates only)')
+        } else if (importedData.templates && importedData.template_groups) {
+          // New format with groups
+          templatesToImport = importedData.templates
+          groupsToImport = importedData.template_groups
+          console.log('📥 Importing new format (templates + groups)')
+        } else {
           alert('Invalid file format. Please select a valid templates JSON file.')
           return
         }
 
-        let successCount = 0
-        let errorCount = 0
+        let groupSuccessCount = 0
+        let groupErrorCount = 0
+        let templateSuccessCount = 0
+        let templateErrorCount = 0
+        const groupIdMapping: Record<string, string> = {}
 
-        // Import each template via API
-        for (const template of importedTemplates) {
+        // First, import groups if available
+        if (groupsToImport.length > 0) {
+          console.log(`📁 Importing ${groupsToImport.length} template groups...`)
+
+          for (const group of groupsToImport) {
+            try {
+              const groupData = {
+                name: group.name || 'Imported Group',
+                description: group.description || '',
+                color: group.color || '#3B82F6',
+                icon: group.icon || 'folder'
+              }
+
+              const response = await fetch('/api/template-groups', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(groupData)
+              })
+
+              const result = await response.json()
+
+              if (result.success) {
+                groupSuccessCount++
+                // Map old group ID to new group ID
+                groupIdMapping[group.id] = result.group.id
+                console.log(`✅ Imported group: ${group.name} (${group.id} -> ${result.group.id})`)
+              } else {
+                groupErrorCount++
+                console.warn('Failed to import group:', group.name, result.error)
+              }
+            } catch (error) {
+              groupErrorCount++
+              console.error('Error importing group:', group.name, error)
+            }
+          }
+        }
+
+        // Then import templates
+        console.log(`📝 Importing ${templatesToImport.length} templates...`)
+
+        for (const template of templatesToImport) {
           try {
             const templateData = {
               name: template.name || 'Imported Template',
@@ -377,6 +565,10 @@ function TemplateManagementComponent() {
               language: template.language || 'en',
               status: 'draft',
               tags: template.tags || [],
+              // Map old group ID to new group ID if available
+              group_id: template.group_id && groupIdMapping[template.group_id]
+                ? groupIdMapping[template.group_id]
+                : null,
               mediaUrl: template.mediaUrl || null,
               mediaType: template.mediaType || null,
               mediaCaption: template.mediaCaption || null
@@ -393,31 +585,47 @@ function TemplateManagementComponent() {
             const result = await response.json()
 
             if (result.success) {
-              successCount++
+              templateSuccessCount++
             } else {
-              errorCount++
+              templateErrorCount++
               console.warn('Failed to import template:', template.name, result.error)
             }
           } catch (error) {
-            errorCount++
+            templateErrorCount++
             console.error('Error importing template:', template.name, error)
           }
         }
 
-        // Refresh templates list
-        await loadTemplates()
+        // Refresh both templates and groups
+        await Promise.all([loadTemplates(), loadTemplateGroups()])
 
-        console.log(`✅ Import completed: ${successCount} success, ${errorCount} errors`)
+        console.log(`✅ Import completed: ${groupSuccessCount} groups, ${templateSuccessCount} templates imported`)
 
-        if (successCount > 0) {
-          alert(`Successfully imported ${successCount} templates!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`)
+        const successMessage = []
+        if (groupSuccessCount > 0) {
+          successMessage.push(`${groupSuccessCount} groups`)
+        }
+        if (templateSuccessCount > 0) {
+          successMessage.push(`${templateSuccessCount} templates`)
+        }
+
+        const errorMessage = []
+        if (groupErrorCount > 0) {
+          errorMessage.push(`${groupErrorCount} groups failed`)
+        }
+        if (templateErrorCount > 0) {
+          errorMessage.push(`${templateErrorCount} templates failed`)
+        }
+
+        if (successMessage.length > 0) {
+          alert(`Successfully imported ${successMessage.join(' and ')}!${errorMessage.length > 0 ? ` (${errorMessage.join(', ')})` : ''}`)
         } else {
-          alert('No templates were imported. Please check the file format.')
+          alert('No items were imported. Please check the file format.')
         }
 
       } catch (error) {
-        console.error('Error importing templates:', error)
-        alert('Error importing templates. Please check the file format.')
+        console.error('Error importing templates and groups:', error)
+        alert('Error importing templates and groups. Please check the file format.')
       } finally {
         setLoading(false)
       }

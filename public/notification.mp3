@@ -1,0 +1,9 @@
+# This is a placeholder for notification sound
+# In production, replace this with an actual MP3 file
+# You can use a short notification sound like:
+# - WhatsApp notification sound
+# - Simple beep sound
+# - Custom notification tone
+
+# For now, this file serves as a placeholder
+# The audio will gracefully fail if file doesn't exist

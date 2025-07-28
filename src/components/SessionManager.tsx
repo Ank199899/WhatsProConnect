@@ -28,6 +28,8 @@ import Input from './ui/Input'
 import Modal, { ModalHeader, ModalBody, ModalFooter } from './ui/Modal'
 import { cn, formatDate, getTimeAgo, copyToClipboard } from '@/lib/utils'
 import { useRealTime } from '@/contexts/RealTimeContext'
+import { useTheme } from '@/contexts/ThemeContext'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface WhatsAppNumberManagerProps {
   whatsappManager: WhatsAppManagerClient
@@ -41,7 +43,7 @@ interface WhatsAppNumberManagerProps {
 const statusColors = {
   initializing: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   qr_code: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  ready: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  ready: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   disconnected: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   auth_failure: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
 }
@@ -62,6 +64,9 @@ export default function WhatsAppNumberManager({
   onSessionSelected,
   selectedSession: propSelectedSession
 }: WhatsAppNumberManagerProps) {
+  // Theme hook
+  const { colors, isDark } = useTheme()
+
   const [whatsappNumbers, setWhatsappNumbers] = useState<SessionStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
@@ -247,13 +252,15 @@ export default function WhatsAppNumberManager({
   }
 
   const getStatusColor = (status: string) => {
+    const baseClasses = 'transition-colors duration-300'
     switch (status) {
-      case 'ready': return 'bg-green-100 text-green-800'
-      case 'qr_code': return 'bg-yellow-100 text-yellow-800'
-      case 'initializing': return 'bg-blue-100 text-blue-800'
-      case 'disconnected': return 'bg-red-100 text-red-800'
-      case 'auth_failure': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'ready': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400`
+      case 'qr_code': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400`
+      case 'initializing': return `${baseClasses} bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400`
+      case 'disconnected': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`
+      case 'auth_failure': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`
+      case 'connected': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400`
+      default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400`
     }
   }
 
@@ -269,27 +276,40 @@ export default function WhatsAppNumberManager({
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div
+      className="p-6 space-y-6 transition-colors duration-300"
+      style={{ backgroundColor: colors.background.primary }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
-            <Smartphone className="w-8 h-8 mr-3 text-green-600" />
+          <h1
+            className="text-3xl font-bold flex items-center transition-colors duration-300"
+            style={{ color: colors.text.primary }}
+          >
+            <Smartphone
+              className="w-8 h-8 mr-3"
+              style={{ color: colors.primary }}
+            />
             WhatsApp Numbers
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <p
+            className="mt-1 transition-colors duration-300"
+            style={{ color: colors.text.secondary }}
+          >
             Manage your WhatsApp connections and monitor number status
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
           {/* Real-time connection status */}
-          <div className={cn(
-            'flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium',
-            isConnected
-              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-          )}>
+          <div
+            className="flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium transition-colors duration-300"
+            style={{
+              backgroundColor: isConnected ? `${colors.primary}20` : `${colors.secondary}20`,
+              color: isConnected ? colors.primary : colors.secondary
+            }}
+          >
             {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             <span>{isConnected ? 'Live' : 'Offline'}</span>
           </div>
@@ -307,7 +327,11 @@ export default function WhatsAppNumberManager({
           <Button
             onClick={() => setShowCreateModal(true)}
             icon={<Plus size={16} />}
-            className="bg-green-600 hover:bg-green-700"
+            style={{
+              backgroundColor: colors.primary,
+              color: '#ffffff'
+            }}
+            className="hover:opacity-90 transition-opacity duration-300"
           >
             Add WhatsApp Number
           </Button>
@@ -318,24 +342,54 @@ export default function WhatsAppNumberManager({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card variant="elevated" className="p-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-              <Smartphone className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <div
+              className="p-2 rounded-lg transition-colors duration-300"
+              style={{ backgroundColor: `${colors.primary}20` }}
+            >
+              <Smartphone
+                className="w-5 h-5"
+                style={{ color: colors.primary }}
+              />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Numbers</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{whatsappNumbers.length}</p>
+              <p
+                className="text-sm font-medium transition-colors duration-300"
+                style={{ color: colors.text.secondary }}
+              >
+                Total Numbers
+              </p>
+              <p
+                className="text-xl font-bold transition-colors duration-300"
+                style={{ color: colors.text.primary }}
+              >
+                {whatsappNumbers.length}
+              </p>
             </div>
           </div>
         </Card>
 
         <Card variant="elevated" className="p-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div
+              className="p-2 rounded-lg transition-colors duration-300"
+              style={{ backgroundColor: `${colors.primary}20` }}
+            >
+              <CheckCircle
+                className="w-5 h-5"
+                style={{ color: colors.primary }}
+              />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Connected</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
+              <p
+                className="text-sm font-medium transition-colors duration-300"
+                style={{ color: colors.text.secondary }}
+              >
+                Connected
+              </p>
+              <p
+                className="text-xl font-bold transition-colors duration-300"
+                style={{ color: colors.text.primary }}
+              >
                 {whatsappNumbers.filter(s => s.status === 'ready').length}
               </p>
             </div>
@@ -344,12 +398,26 @@ export default function WhatsAppNumberManager({
 
         <Card variant="elevated" className="p-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-              <QrCode className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+            <div
+              className="p-2 rounded-lg transition-colors duration-300"
+              style={{ backgroundColor: '#F59E0B20' }}
+            >
+              <QrCode
+                className="w-5 h-5"
+                style={{ color: '#F59E0B' }}
+              />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending QR</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
+              <p
+                className="text-sm font-medium transition-colors duration-300"
+                style={{ color: colors.text.secondary }}
+              >
+                Pending QR
+              </p>
+              <p
+                className="text-xl font-bold transition-colors duration-300"
+                style={{ color: colors.text.primary }}
+              >
                 {whatsappNumbers.filter(s => s.status === 'qr_code').length}
               </p>
             </div>
@@ -358,12 +426,26 @@ export default function WhatsAppNumberManager({
 
         <Card variant="elevated" className="p-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-              <MessageCircle className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            <div
+              className="p-2 rounded-lg transition-colors duration-300"
+              style={{ backgroundColor: '#8B5CF620' }}
+            >
+              <MessageCircle
+                className="w-5 h-5"
+                style={{ color: '#8B5CF6' }}
+              />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Messages</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
+              <p
+                className="text-sm font-medium transition-colors duration-300"
+                style={{ color: colors.text.secondary }}
+              >
+                Total Messages
+              </p>
+              <p
+                className="text-xl font-bold transition-colors duration-300"
+                style={{ color: colors.text.primary }}
+              >
                 {whatsappNumbers.reduce((sum, s) => sum + (s.stats?.totalMessages || 0), 0)}
               </p>
             </div>
@@ -372,23 +454,53 @@ export default function WhatsAppNumberManager({
       </div>
 
       {/* WhatsApp Numbers List */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">WhatsApp Numbers</h2>
+      <div
+        className="rounded-lg shadow transition-colors duration-300"
+        style={{ backgroundColor: colors.background.secondary }}
+      >
+        <div
+          className="px-6 py-4 transition-colors duration-300"
+          style={{
+            borderBottom: `1px solid ${colors.border}`,
+            backgroundColor: colors.background.secondary
+          }}
+        >
+          <h2
+            className="text-lg font-semibold transition-colors duration-300"
+            style={{ color: colors.text.primary }}
+          >
+            WhatsApp Numbers
+          </h2>
         </div>
-        
+
         {whatsappNumbers.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
+          <div
+            className="p-6 text-center transition-colors duration-300"
+            style={{ color: colors.text.secondary }}
+          >
             No WhatsApp numbers created yet. Create your first WhatsApp number to get started.
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div
+            className="transition-colors duration-300"
+            style={{ borderColor: colors.border }}
+          >
             {whatsappNumbers.map((whatsappNumber) => (
-              <div key={whatsappNumber.id} className="p-6">
+              <div
+                key={whatsappNumber.id}
+                className="p-6 transition-colors duration-300"
+                style={{
+                  borderBottom: `1px solid ${colors.border}`,
+                  backgroundColor: colors.background.secondary
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
-                      <h3 className="text-lg font-medium text-gray-900">
+                      <h3
+                        className="text-lg font-medium transition-colors duration-300"
+                        style={{ color: colors.text.primary }}
+                      >
                         {whatsappNumber.name}
                       </h3>
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(whatsappNumber.status)}`}>
@@ -398,15 +510,24 @@ export default function WhatsAppNumberManager({
 
                     <div className="mt-2 space-y-1">
                       {whatsappNumber.phoneNumber && (
-                        <p className="text-sm text-gray-600">
+                        <p
+                          className="text-sm transition-colors duration-300"
+                          style={{ color: colors.text.secondary }}
+                        >
                           📱 {whatsappNumber.phoneNumber}
                         </p>
                       )}
-                      <p className="text-sm text-gray-500">
+                      <p
+                        className="text-sm transition-colors duration-300"
+                        style={{ color: colors.text.muted }}
+                      >
                         Created: {new Date(whatsappNumber.createdAt).toLocaleString()}
                       </p>
                       {whatsappNumber.stats && (
-                        <div className="flex space-x-4 text-sm text-gray-600">
+                        <div
+                          className="flex space-x-4 text-sm transition-colors duration-300"
+                          style={{ color: colors.text.secondary }}
+                        >
                           <span>👥 {whatsappNumber.stats.totalContacts} contacts</span>
                           <span>💬 {whatsappNumber.stats.totalMessages} messages</span>
                         </div>
@@ -418,11 +539,15 @@ export default function WhatsAppNumberManager({
                     {whatsappNumber.status === 'ready' && onSessionSelected && (
                       <button
                         onClick={() => onSessionSelected(whatsappNumber.id)}
-                        className={`px-4 py-2 text-sm font-medium rounded-md ${
-                          propSelectedSession === whatsappNumber.id
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                        }`}
+                        className="px-4 py-2 text-sm font-medium rounded-md transition-all duration-300 hover:scale-105"
+                        style={{
+                          backgroundColor: propSelectedSession === whatsappNumber.id
+                            ? colors.primary
+                            : `${colors.primary}20`,
+                          color: propSelectedSession === whatsappNumber.id
+                            ? '#ffffff'
+                            : colors.primary
+                        }}
                       >
                         {propSelectedSession === whatsappNumber.id ? 'Selected' : 'Select'}
                       </button>
@@ -430,7 +555,11 @@ export default function WhatsAppNumberManager({
 
                     <button
                       onClick={() => handleDeleteWhatsAppNumber(whatsappNumber.id)}
-                      className="px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200"
+                      className="px-4 py-2 text-sm font-medium rounded-md transition-all duration-300 hover:scale-105"
+                      style={{
+                        backgroundColor: '#EF444420',
+                        color: '#EF4444'
+                      }}
                     >
                       Delete
                     </button>
@@ -450,14 +579,25 @@ export default function WhatsAppNumberManager({
       </div>
 
       {/* Instructions */}
-      <div className="bg-blue-50 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-blue-900 mb-2">How to Connect</h3>
-        <ol className="list-decimal list-inside space-y-2 text-blue-800">
-          <li>Click &quot;Add WhatsApp Number&quot; to start a new WhatsApp connection</li>
+      <div
+        className="rounded-lg p-6 transition-colors duration-300"
+        style={{ backgroundColor: `${colors.primary}10` }}
+      >
+        <h3
+          className="text-lg font-medium mb-2 transition-colors duration-300"
+          style={{ color: colors.primary }}
+        >
+          How to Connect
+        </h3>
+        <ol
+          className="list-decimal list-inside space-y-2 transition-colors duration-300"
+          style={{ color: colors.text.secondary }}
+        >
+          <li>Click "Add WhatsApp Number" to start a new WhatsApp connection</li>
           <li>Scan the QR code with your WhatsApp mobile app</li>
-          <li>Go to WhatsApp → Settings → Linked Devices → &quot;Link a Device&quot;</li>
+          <li>Go to WhatsApp → Settings → Linked Devices → "Link a Device"</li>
           <li>Scan the QR code displayed above</li>
-          <li>Once connected, the WhatsApp number will show as &quot;Ready&quot;</li>
+          <li>Once connected, the WhatsApp number will show as "Ready"</li>
         </ol>
       </div>
 

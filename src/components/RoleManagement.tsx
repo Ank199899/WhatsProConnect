@@ -436,12 +436,12 @@ export default function RoleManagement() {
     return Users
   }
 
-  const getLevelColor = (level: Permission['level']) => {
+  const getLevelColor = (level: Permission['level'], colors: any) => {
     switch (level) {
-      case 'read': return 'bg-blue-100 text-blue-800'
-      case 'write': return 'bg-yellow-100 text-yellow-800'
-      case 'admin': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'read': return { backgroundColor: `${colors.primary}20`, color: colors.primary }
+      case 'write': return { backgroundColor: '#F59E0B20', color: '#F59E0B' }
+      case 'admin': return { backgroundColor: '#EF444420', color: '#EF4444' }
+      default: return { backgroundColor: `${colors.accent}20`, color: colors.accent }
     }
   }
 
@@ -450,11 +450,20 @@ export default function RoleManagement() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-            <Shield className="w-8 h-8 mr-3 text-blue-600" />
+          <h1
+            className="text-3xl font-bold flex items-center transition-colors duration-300"
+            style={{ color: colors.text.primary }}
+          >
+            <Shield
+              className="w-8 h-8 mr-3"
+              style={{ color: colors.primary }}
+            />
             Role Management
           </h1>
-          <p className="text-gray-600 mt-1">
+          <p
+            className="mt-1 transition-colors duration-300"
+            style={{ color: colors.text.secondary }}
+          >
             Define roles and permissions for your team members
           </p>
         </div>

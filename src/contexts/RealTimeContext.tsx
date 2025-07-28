@@ -150,14 +150,19 @@ export function RealTimeProvider({ children }: RealTimeProviderProps) {
   }, [])
 
   const updateData = (section: keyof RealTimeData, newData: any) => {
-    setData(prev => ({
-      ...prev,
-      [section]: newData,
-      lastUpdated: {
-        ...prev.lastUpdated,
-        [section]: Date.now()
+    console.log(`🔄 RealTimeContext: Updating ${section} with data:`, newData)
+    setData(prev => {
+      const updated = {
+        ...prev,
+        [section]: newData,
+        lastUpdated: {
+          ...prev.lastUpdated,
+          [section]: Date.now()
+        }
       }
-    }))
+      console.log(`✅ RealTimeContext: Updated ${section}, new data:`, updated[section])
+      return updated
+    })
   }
 
   const subscribe = (channel: string, callback: (data: any) => void) => {

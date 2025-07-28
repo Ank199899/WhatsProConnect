@@ -363,7 +363,7 @@ export default function AdvancedAIAgentManagement() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Bot className="h-6 w-6 text-blue-600" />
+            <Bot className="h-6 w-6" style={{color: '#296073'}} />
             AI Agent Management
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -381,7 +381,8 @@ export default function AdvancedAIAgentManagement() {
           </Button>
           <Button
             onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+            className="text-white flex items-center gap-2"
+            style={{background: 'linear-gradient(to right, #296073, #3596B5)'}}
           >
             <Plus className="h-4 w-4" />
             Create Agent
@@ -397,7 +398,7 @@ export default function AdvancedAIAgentManagement() {
               <p className="text-sm text-gray-600 dark:text-gray-400">Total Agents</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{agents.length}</p>
             </div>
-            <Bot className="h-8 w-8 text-blue-600" />
+            <Bot className="h-8 w-8" style={{color: '#296073'}} />
           </div>
         </Card>
 
@@ -405,11 +406,11 @@ export default function AdvancedAIAgentManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Active Agents</p>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-2xl font-bold" style={{color: '#3596B5'}}>
                 {agents.filter(a => a.isActive).length}
               </p>
             </div>
-            <CheckCircle className="h-8 w-8 text-green-600" />
+            <CheckCircle className="h-8 w-8" style={{color: '#3596B5'}} />
           </div>
         </Card>
 

@@ -4,6 +4,7 @@ import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface ModalProps {
   isOpen: boolean
@@ -34,6 +35,8 @@ export function Modal({
   closeOnOverlayClick = true,
   className
 }: ModalProps) {
+  // Theme hook
+  const { colors } = useTheme()
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

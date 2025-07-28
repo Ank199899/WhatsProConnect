@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import DatabaseService from '@/lib/database'
+import { ServerDatabaseService } from '@/lib/database-server'
 
 export async function GET() {
   try {
-    console.log('👥 Getting all contacts')
-    
-    const contacts = await DatabaseService.getAllContacts()
-    
+    console.log('👥 Getting all contacts from database server')
+
+    const dbService = new ServerDatabaseService()
+    const contacts = await dbService.getAllContacts()
+
+    console.log(`📋 Retrieved ${contacts.length} contacts from database`)
+
     return NextResponse.json({
       success: true,
       contacts: contacts || []
     })
   } catch (error) {
-    console.error('❌ Error getting contacts:', error)
+    console.error('❌ Error getting contacts from database:', error)
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -42,14 +45,57 @@ export async function POST(request: NextRequest) {
       sessionId: contactData.sessionId || null,
       profilePicture: contactData.profilePicture || null,
       status: 'active',
-      customFields: contactData.customFields || {}
+      customFields: contactData.customFields || {},
+      groupId: contactData.groupId || null,
+      country: contactData.country || null,
+      city: contactData.city || null,
+      company: contactData.company || null,
+      jobTitle: contactData.jobTitle || null,
+      website: contactData.website || null
     }
+
+    console.log('💾 Saving contact to database server:', contact)
+
+    const dbService = new ServerDatabaseService()
+    const createdContact = await dbService.saveContact({
+      session_id: contact.sessionId,
+      whatsapp_id: contact.phone,
+      name: contact.name,
+      phone_number: contact.phone,
+      is_group: false,
+      profile_pic_url: contact.profilePicture
+    })
     
-    const createdContact = DatabaseService.createContact(contact)
-    
+    // Convert database format to frontend format
+    const frontendContact = {
+      id: createdContact.id,
+      name: createdContact.name,
+      phone: createdContact.phone_number,
+      email: contact.email,
+      address: contact.address,
+      tags: contact.tags,
+      notes: contact.notes,
+      lastMessageAt: null,
+      messageCount: 0,
+      isBlocked: false,
+      isFavorite: false,
+      createdAt: createdContact.created_at,
+      updatedAt: createdContact.updated_at,
+      sessionId: createdContact.session_id,
+      profilePicture: createdContact.profile_pic_url,
+      status: 'active',
+      customFields: contact.customFields,
+      groupId: contact.groupId,
+      country: contact.country,
+      city: contact.city,
+      company: contact.company,
+      jobTitle: contact.jobTitle,
+      website: contact.website
+    }
+
     return NextResponse.json({
       success: true,
-      contact: createdContact
+      contact: frontendContact
     })
   } catch (error) {
     console.error('❌ Error creating contact:', error)
@@ -73,14 +119,52 @@ export async function PUT(request: NextRequest) {
     }
 
     const updateData = await request.json()
-    console.log('📝 Updating contact:', contactId, 'with data:', updateData)
+    console.log('📝 Updating contact in database:', contactId, 'with data:', updateData)
 
-    const updatedContact = DatabaseService.updateContact(contactId, updateData)
+    const dbService = new ServerDatabaseService()
+
+    // Update contact in database
+    const updatedContact = await dbService.saveContact({
+      id: contactId,
+      session_id: updateData.sessionId,
+      whatsapp_id: updateData.phone,
+      name: updateData.name,
+      phone_number: updateData.phone,
+      is_group: false,
+      profile_pic_url: updateData.profilePicture
+    })
 
     if (updatedContact) {
+      // Convert to frontend format
+      const frontendContact = {
+        id: updatedContact.id,
+        name: updatedContact.name,
+        phone: updatedContact.phone_number,
+        email: updateData.email,
+        address: updateData.address,
+        tags: updateData.tags,
+        notes: updateData.notes,
+        lastMessageAt: updateData.lastMessageAt,
+        messageCount: updateData.messageCount || 0,
+        isBlocked: updateData.isBlocked || false,
+        isFavorite: updateData.isFavorite || false,
+        createdAt: updatedContact.created_at,
+        updatedAt: updatedContact.updated_at,
+        sessionId: updatedContact.session_id,
+        profilePicture: updatedContact.profile_pic_url,
+        status: updateData.status || 'active',
+        customFields: updateData.customFields || {},
+        groupId: updateData.groupId,
+        country: updateData.country,
+        city: updateData.city,
+        company: updateData.company,
+        jobTitle: updateData.jobTitle,
+        website: updateData.website
+      }
+
       return NextResponse.json({
         success: true,
-        contact: updatedContact
+        contact: frontendContact
       })
     } else {
       return NextResponse.json({
@@ -109,9 +193,10 @@ export async function DELETE(request: NextRequest) {
       }, { status: 400 })
     }
 
-    console.log('🗑️ Deleting contact:', contactId)
+    console.log('🗑️ Deleting contact from database:', contactId)
 
-    const deleted = DatabaseService.deleteContact(contactId)
+    const dbService = new ServerDatabaseService()
+    const deleted = await dbService.deleteContact(contactId)
 
     if (deleted) {
       return NextResponse.json({

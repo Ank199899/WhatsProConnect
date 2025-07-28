@@ -39,3 +39,36 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# WhatsApp Web.js cache and auth
+.wwebjs_cache/
+.wwebjs_auth/
+sessions/
+server/temp/
+server/.wwebjs_cache/
+
+# Logs
+logs/
+*.log
+server.log
+server/server.log
+
+# Process IDs
+.pids
+server/server.pid
+
+# Uploads and media
+uploads/
+public/uploads/
+public/test-media/
+
+# IDE
+.vscode/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+.next-backup*/

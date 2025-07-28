@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import DatabaseService from '@/lib/database'
 
 interface RouteParams {
   params: Promise<{
@@ -13,43 +12,33 @@ export async function GET(
 ) {
   try {
     const { sessionId } = await params
-    
+
     console.log('💬 Getting chats for session:', sessionId)
-    
-    // Get contacts/chats from database
-    const contacts = DatabaseService.getContacts(sessionId)
-    console.log('✅ Retrieved contacts from database:', contacts.length)
-    
-    // Get recent messages for each contact to build chat list
-    const chats = contacts.map(contact => {
-      const messages = DatabaseService.getChatMessages(sessionId, contact.phone_number)
-      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null
-      const unreadCount = messages.filter(msg => 
-        msg.from_number !== 'me' && !msg.is_read
-      ).length
-      
-      return {
-        id: contact.phone_number,
-        name: contact.name || contact.phone_number,
-        lastMessage: lastMessage?.body || 'No messages yet',
-        timestamp: lastMessage?.timestamp || Date.now(),
-        unreadCount,
-        isGroup: false,
-        pinned: false,
-        archived: false,
-        isMuted: false
-      }
-    })
-    
-    // Sort by last message timestamp
-    chats.sort((a, b) => b.timestamp - a.timestamp)
-    
-    console.log('✅ Formatted chats:', chats.length)
-    
-    return NextResponse.json({
-      success: true,
-      chats
-    })
+
+    // Get chats from WhatsApp server instead of database
+    const whatsappServerUrl = process.env.WHATSAPP_SERVER_URL || 'http://localhost:3006'
+    const response = await fetch(`${whatsappServerUrl}/api/sessions/${sessionId}/chats`)
+
+    if (!response.ok) {
+      throw new Error(`WhatsApp server error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log('✅ Retrieved chats from WhatsApp server:', data.chats?.length || 0)
+
+    if (data.success && data.chats) {
+      return NextResponse.json({
+        success: true,
+        chats: data.chats
+      })
+    } else {
+      console.warn('❌ WhatsApp server returned error:', data.error)
+      return NextResponse.json({
+        success: false,
+        error: data.error || 'Failed to get chats from WhatsApp server',
+        chats: []
+      }, { status: 500 })
+    }
   } catch (error) {
     console.error('❌ Error getting chats:', error)
     return NextResponse.json({

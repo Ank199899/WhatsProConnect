@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
         })
       }
       
-      providers = DatabaseService.getAllAIProviders()
+      providers = DatabaseService.getAllAIProviders() || []
     }
     
     // Check which providers have API keys
-    const providersWithKeyStatus = providers.map(provider => {
+    const providersWithKeyStatus = (providers || []).map(provider => {
       const hasApiKey = DatabaseService.getProviderAPIKey(provider.id) !== null
       return {
         ...provider,

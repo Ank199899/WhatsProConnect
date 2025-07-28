@@ -1,0 +1,577 @@
+/* Custom Animations for Dashboard */
+
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(41, 96, 115, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(41, 96, 115, 0.6);
+  }
+}
+
+/* Animation Classes */
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.6s ease-out;
+}
+
+.animate-count-up {
+  animation: count-up 0.8s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Animation Delays */
+.animation-delay-100 {
+  animation-delay: 0.1s;
+}
+
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-300 {
+  animation-delay: 0.3s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
+.animation-delay-500 {
+  animation-delay: 0.5s;
+}
+
+.animation-delay-600 {
+  animation-delay: 0.6s;
+}
+
+.animation-delay-700 {
+  animation-delay: 0.7s;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Hover Effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Glass Effect */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: linear-gradient(45deg, #296073, #359655, #ADC5CF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Shimmer Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Pulse Glow */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(53, 150, 85, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(53, 150, 85, 0.8);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Enhanced Hover Border Draw Effect - Fixed Outer, Rounded Inner */
+.hover-border-draw {
+  position: relative;
+  border: 3px solid #296073;
+  border-radius: 12px;
+  transition: all 0.4s ease;
+  overflow: hidden;
+}
+
+.hover-border-draw::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #296073, #359655, #ADC5CF, #296073);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+  border-radius: 12px 12px 0 0;
+}
+
+.hover-border-draw::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 3px;
+  height: 0;
+  background: linear-gradient(180deg, #359655, #ADC5CF, #296073, #359655);
+  transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.2s;
+  z-index: 2;
+  border-radius: 0 12px 12px 0;
+}
+
+.hover-border-draw .border-bottom {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(270deg, #ADC5CF, #296073, #359655, #ADC5CF);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.4s;
+  z-index: 2;
+  border-radius: 0 0 12px 12px;
+}
+
+.hover-border-draw .border-left {
+  position: absolute;
+  bottom: -3px;
+  left: -3px;
+  width: 3px;
+  height: 0;
+  background: linear-gradient(0deg, #296073, #359655, #ADC5CF, #296073);
+  transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.6s;
+  z-index: 2;
+  border-radius: 12px 0 0 12px;
+}
+
+.hover-border-draw:hover {
+  border-color: transparent;
+  box-shadow:
+    0 0 20px rgba(41, 96, 115, 0.3),
+    0 0 40px rgba(53, 150, 85, 0.2),
+    0 0 60px rgba(173, 197, 207, 0.1);
+  transform: translateY(-2px);
+}
+
+.hover-border-draw:hover::before {
+  width: calc(100% + 6px);
+}
+
+.hover-border-draw:hover::after {
+  height: calc(100% + 6px);
+}
+
+.hover-border-draw:hover .border-bottom {
+  width: calc(100% + 6px);
+}
+
+.hover-border-draw:hover .border-left {
+  height: calc(100% + 6px);
+}
+
+/* Continuous Animated Border for Cards - Runs while hovering */
+.card-border-draw {
+  position: relative;
+  border: 2px solid rgba(41, 96, 115, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Continuous Border Animation - Top */
+.card-border-draw::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #296073, #359655, #ADC5CF, transparent);
+  background-size: 200% 100%;
+  border-radius: 16px 16px 0 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Continuous Border Animation - Bottom */
+.card-border-draw::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(270deg, transparent, #ADC5CF, #359655, #296073, transparent);
+  background-size: 200% 100%;
+  border-radius: 0 0 16px 16px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Left Side Border */
+.card-border-draw .border-left-side {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, transparent, #296073, #359655, transparent);
+  background-size: 100% 200%;
+  border-radius: 16px 0 0 16px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Right Side Border */
+.card-border-draw .border-right-side {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(0deg, transparent, #ADC5CF, #359655, transparent);
+  background-size: 100% 200%;
+  border-radius: 0 16px 16px 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Hover State - Show borders and start continuous animation */
+.card-border-draw:hover {
+  border-color: transparent;
+  box-shadow:
+    0 8px 25px rgba(41, 96, 115, 0.15),
+    0 4px 15px rgba(53, 150, 85, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform: translateY(-3px) scale(1.02);
+}
+
+/* Content inside cards should be above animation */
+.card-border-draw > * {
+  position: relative;
+  z-index: 10;
+}
+
+.card-border-draw:hover::before {
+  opacity: 1;
+  animation: border-flow-horizontal 2s linear infinite;
+}
+
+.card-border-draw:hover::after {
+  opacity: 1;
+  animation: border-flow-horizontal-reverse 2s linear infinite;
+}
+
+.card-border-draw:hover .border-left-side {
+  opacity: 1;
+  animation: border-flow-vertical 2s linear infinite;
+}
+
+.card-border-draw:hover .border-right-side {
+  opacity: 1;
+  animation: border-flow-vertical-reverse 2s linear infinite;
+}
+
+/* Continuous Border Flow Animations */
+@keyframes border-flow-horizontal {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes border-flow-horizontal-reverse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes border-flow-vertical {
+  0% {
+    background-position: 0 -200%;
+  }
+  100% {
+    background-position: 0 200%;
+  }
+}
+
+@keyframes border-flow-vertical-reverse {
+  0% {
+    background-position: 0 200%;
+  }
+  100% {
+    background-position: 0 -200%;
+  }
+}
+
+/* Additional Pulsing Glow Effect */
+.card-border-draw:hover {
+  animation: card-glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes card-glow-pulse {
+  0%, 100% {
+    box-shadow:
+      0 8px 25px rgba(41, 96, 115, 0.15),
+      0 4px 15px rgba(53, 150, 85, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 12px 35px rgba(41, 96, 115, 0.25),
+      0 6px 20px rgba(53, 150, 85, 0.2),
+      0 0 30px rgba(173, 197, 207, 0.1);
+  }
+}
+
+/* Alternative Rotating Border Effect */
+.card-rotating-border {
+  position: relative;
+  border: 2px solid rgba(41, 96, 115, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-rotating-border::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    transparent,
+    transparent,
+    #296073,
+    #359655,
+    #ADC5CF,
+    #296073,
+    transparent,
+    transparent
+  );
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 1;
+}
+
+.card-rotating-border::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  background: white;
+  border-radius: 14px;
+  z-index: 2;
+}
+
+.card-rotating-border:hover::before {
+  opacity: 1;
+  animation: rotate-border 3s linear infinite;
+}
+
+.card-rotating-border:hover {
+  border-color: transparent;
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    0 8px 25px rgba(41, 96, 115, 0.15),
+    0 4px 15px rgba(53, 150, 85, 0.1);
+}
+
+@keyframes rotate-border {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Simple Test Animation - Visible Border */
+.card-simple-border {
+  position: relative;
+  border: 2px solid rgba(41, 96, 115, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.5s ease;
+}
+
+.card-simple-border::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #296073, #359655, #ADC5CF, #296073);
+  background-size: 400% 400%;
+  border-radius: 16px;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.card-simple-border:hover::before {
+  opacity: 1;
+  animation: gradient-flow 2s ease infinite;
+}
+
+.card-simple-border:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(41, 96, 115, 0.2);
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}

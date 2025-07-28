@@ -57,15 +57,40 @@ export interface Message {
   status: 'sent' | 'delivered' | 'read' | 'failed'
 }
 
+export interface TemplateGroup {
+  id: string
+  name: string
+  description?: string
+  color: string
+  icon?: string
+  is_active: boolean
+  template_count: number
+  created_at: string
+  updated_at: string
+  created_by: string
+}
+
 export interface MessageTemplate {
   id: string
   name: string
   content: string
   variables: string[]
   category: string
+  type: 'text' | 'image' | 'video' | 'document' | 'interactive'
+  language: string
+  status: 'active' | 'pending' | 'rejected' | 'draft'
+  tags: string[]
+  group_id?: string
+  group_name?: string
   is_active: boolean
+  usage_count: number
+  rating: number
+  media_url?: string
+  media_type?: 'image' | 'video' | 'document' | 'audio'
+  media_caption?: string
   created_at: string
   updated_at: string
+  created_by: string
 }
 
 export interface BulkMessageQueue {
@@ -198,6 +223,21 @@ class ServerDatabaseService {
         )
       `)
 
+      // Contact Groups Table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS contact_groups (
+          id VARCHAR(255) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          color VARCHAR(50) DEFAULT 'bg-blue-500',
+          icon VARCHAR(50) DEFAULT 'Folder',
+          contact_count INTEGER DEFAULT 0,
+          is_default BOOLEAN DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+
       // Bulk Message Logs Table
       await client.query(`
         CREATE TABLE IF NOT EXISTS bulk_message_logs (
@@ -323,12 +363,32 @@ class ServerDatabaseService {
   async getChatMessages(sessionId: string, contactNumber: string): Promise<any[]> {
     const client = await this.pool.connect()
     try {
-      const result = await client.query(
-        `SELECT * FROM messages
-         WHERE session_id = $1 AND (from_number = $2 OR to_number = $2)
-         ORDER BY timestamp ASC`,
+      // First find the contact by phone number or whatsapp_id
+      const contactResult = await client.query(
+        `SELECT id FROM contacts 
+         WHERE session_id = $1 AND (phone_number = $2 OR whatsapp_id = $2)`,
         [sessionId, contactNumber]
       )
+      
+      if (contactResult.rows.length === 0) {
+        console.log('❌ Contact not found for:', contactNumber)
+        return []
+      }
+      
+      const contactId = contactResult.rows[0].id
+      console.log('🔍 Found contact ID:', contactId, 'for number:', contactNumber)
+      
+      // Get messages for this contact
+      const result = await client.query(
+        `SELECT m.*, c.name as contact_name, c.phone_number as contact_phone
+         FROM messages m
+         LEFT JOIN contacts c ON m.contact_id = c.id
+         WHERE m.session_id = $1 AND m.contact_id = $2
+         ORDER BY m.timestamp ASC`,
+        [sessionId, contactId]
+      )
+      
+      console.log('📨 Found messages:', result.rows.length)
       return result.rows
     } finally {
       client.release()
@@ -378,6 +438,159 @@ class ServerDatabaseService {
     }
   }
 
+  async deleteContact(contactId: string): Promise<boolean> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('DELETE FROM contacts WHERE id = $1', [contactId])
+      return result.rowCount > 0
+    } finally {
+      client.release()
+    }
+  }
+
+  // Group Management
+  async saveGroup(group: any): Promise<any> {
+    const client = await this.pool.connect()
+    try {
+      const id = group.id || `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const result = await client.query(
+        `INSERT INTO contact_groups (id, name, description, color, icon, contact_count, is_default, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         color = EXCLUDED.color,
+         icon = EXCLUDED.icon,
+         contact_count = EXCLUDED.contact_count,
+         updated_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [id, group.name, group.description, group.color, group.icon, group.contactCount || 0, group.isDefault || false]
+      )
+      return result.rows[0]
+    } finally {
+      client.release()
+    }
+  }
+
+  async getAllGroups(): Promise<any[]> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('SELECT * FROM contact_groups ORDER BY name ASC')
+      return result.rows
+    } finally {
+      client.release()
+    }
+  }
+
+  async deleteGroup(groupId: string): Promise<boolean> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('DELETE FROM contact_groups WHERE id = $1', [groupId])
+      return result.rowCount > 0
+    } finally {
+      client.release()
+    }
+  }
+
+  // Template Management
+  async saveTemplate(template: any): Promise<any> {
+    const client = await this.pool.connect()
+    try {
+      const id = template.id || `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const result = await client.query(
+        `INSERT INTO message_templates (id, name, content, variables, category, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         content = EXCLUDED.content,
+         variables = EXCLUDED.variables,
+         category = EXCLUDED.category,
+         is_active = EXCLUDED.is_active,
+         updated_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [id, template.name, template.content, template.variables || [], template.category || 'general', template.is_active !== false]
+      )
+      return result.rows[0]
+    } finally {
+      client.release()
+    }
+  }
+
+  async getAllTemplates(): Promise<any[]> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('SELECT * FROM message_templates ORDER BY name ASC')
+      return result.rows
+    } finally {
+      client.release()
+    }
+  }
+
+  async deleteTemplate(templateId: string): Promise<boolean> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('DELETE FROM message_templates WHERE id = $1', [templateId])
+      return result.rowCount > 0
+    } finally {
+      client.release()
+    }
+  }
+
+  // Session Management Methods
+  async getSession(sessionId: string): Promise<any> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('SELECT * FROM whatsapp_sessions WHERE id = $1', [sessionId])
+      return result.rows[0] || null
+    } finally {
+      client.release()
+    }
+  }
+
+  async updateSession(sessionId: string, updates: any): Promise<any> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query(
+        `UPDATE whatsapp_sessions SET
+         name = COALESCE($2, name),
+         phone_number = COALESCE($3, phone_number),
+         status = COALESCE($4, status),
+         qr_code = COALESCE($5, qr_code),
+         is_active = COALESCE($6, is_active),
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 RETURNING *`,
+        [sessionId, updates.name, updates.phone_number, updates.status, updates.qr_code, updates.is_active]
+      )
+      return result.rows[0] || null
+    } finally {
+      client.release()
+    }
+  }
+
+  async deleteSession(sessionId: string): Promise<boolean> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query('DELETE FROM whatsapp_sessions WHERE id = $1', [sessionId])
+      return result.rowCount > 0
+    } finally {
+      client.release()
+    }
+  }
+
+  // Message Range Query
+  async getMessagesInDateRange(startDate: Date, endDate: Date): Promise<any[]> {
+    const client = await this.pool.connect()
+    try {
+      const result = await client.query(
+        'SELECT * FROM messages WHERE timestamp BETWEEN $1 AND $2 ORDER BY timestamp DESC',
+        [startDate, endDate]
+      )
+      return result.rows
+    } finally {
+      client.release()
+    }
+  }
+
   // Close connection pool
   async close(): Promise<void> {
     await this.pool.end()
@@ -387,4 +600,5 @@ class ServerDatabaseService {
 // Export singleton instance
 export { ServerDatabaseService }
 export const serverDatabase = new ServerDatabaseService()
+export const DatabaseService = serverDatabase // Alias for compatibility
 export default serverDatabase

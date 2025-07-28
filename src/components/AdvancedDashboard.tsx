@@ -26,6 +26,7 @@ import Button from './ui/Button'
 import AnimatedHeader from './AnimatedHeader'
 import ProfessionalCard from './ProfessionalCard'
 import { cn, formatNumber, getTimeAgo } from '@/lib/utils'
+import { useTheme } from '@/contexts/ThemeContext'
 
 interface DashboardStats {
   totalSessions: number
@@ -46,73 +47,80 @@ interface RecentActivity {
   status: 'success' | 'warning' | 'error'
 }
 
-const statCards = [
+const getStatCards = (colors: any) => [
   {
     key: 'totalSessions',
     label: 'Total Sessions',
     icon: Smartphone,
-    color: 'blue',
-    gradient: 'from-blue-500 to-blue-600',
+    color: 'primary',
+    gradient: `from-[${colors.primary}] to-[${colors.secondary}]`,
     change: '+12%'
   },
   {
-    key: 'activeSessions', 
+    key: 'activeSessions',
     label: 'Active Sessions',
     icon: CheckCircle,
-    color: 'green',
-    gradient: 'from-green-500 to-green-600',
+    color: 'secondary',
+    gradient: `from-[${colors.secondary}] to-[${colors.accent}]`,
     change: '+8%'
   },
   {
     key: 'totalMessages',
     label: 'Total Messages',
     icon: MessageCircle,
-    color: 'purple',
-    gradient: 'from-purple-500 to-purple-600',
+    color: 'accent',
+    gradient: `from-[${colors.accent}] to-[${colors.primary}]`,
     change: '+24%'
   },
   {
     key: 'totalContacts',
-    label: 'Total Contacts', 
+    label: 'Total Contacts',
     icon: Users,
-    color: 'orange',
-    gradient: 'from-orange-500 to-orange-600',
+    color: 'primary',
+    gradient: `from-[${colors.primary}] to-[${colors.secondary}]`,
     change: '+16%'
   }
 ]
 
-const performanceCards = [
+const getPerformanceCards = (colors: any) => [
   {
     key: 'messagesLast24h',
     label: 'Messages (24h)',
     icon: TrendingUp,
-    color: 'indigo',
+    color: 'primary',
     suffix: ''
   },
   {
     key: 'avgResponseTime',
     label: 'Avg Response Time',
     icon: Clock,
-    color: 'pink',
+    color: 'secondary',
     suffix: 'ms'
   },
   {
     key: 'successRate',
     label: 'Success Rate',
     icon: Zap,
-    color: 'emerald',
+    color: 'accent',
     suffix: '%'
   },
   {
     key: 'uptime',
     label: 'Uptime',
     icon: Activity,
-    color: 'cyan',
+    color: 'primary',
     suffix: '%'
   }
 ]
 
 export default function AdvancedDashboard() {
+  // Theme hook
+  const { colors, isDark } = useTheme()
+
+  // Get themed cards
+  const statCards = getStatCards(colors)
+  const performanceCards = getPerformanceCards(colors)
+
   // Real-time data hooks
   const { data: sessions, loading: sessionsLoading, refresh: refreshSessions, isConnected } = useRealTimeSessions()
   const { data: contacts, loading: contactsLoading } = useRealTimeContacts()
@@ -169,7 +177,7 @@ export default function AdvancedDashboard() {
     // Set stats with real data only
     setStats({
       totalSessions: sessionsData.length,
-      activeSessions: sessionsData.filter((s: any) => s.status === 'ready').length,
+      activeSessions: sessionsData.filter((s: any) => s.status === 'ready' || s.status === 'connected').length,
       totalMessages: messagesData.length,
       totalContacts: contactsData.length,
       messagesLast24h: messagesLast24h,
@@ -243,7 +251,10 @@ export default function AdvancedDashboard() {
 
   if (loading || sessionsLoading || contactsLoading || messagesLoading || analyticsLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div
+        className="p-6 space-y-6 transition-colors duration-300"
+        style={{ backgroundColor: colors.background.primary }}
+      >
         {/* Enhanced Loading State */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -251,12 +262,22 @@ export default function AdvancedDashboard() {
           className="text-center py-12"
         >
           <motion.div
-            className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full mx-auto mb-6"
+            className="w-16 h-16 border-4 rounded-full mx-auto mb-6"
+            style={{
+              borderColor: `${colors.border}40`,
+              borderTopColor: colors.primary
+            }}
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Dashboard</h2>
-          <p className="text-gray-600 mb-4">Syncing real-time data from WhatsApp sessions...</p>
+          <h2
+            className="text-2xl font-bold mb-2 transition-colors duration-300"
+            style={{ color: colors.text.primary }}
+          >Loading Dashboard</h2>
+          <p
+            className="mb-4 transition-colors duration-300"
+            style={{ color: colors.text.secondary }}
+          >Syncing real-time data from WhatsApp sessions...</p>
 
           {/* Loading Progress */}
           <div className="max-w-md mx-auto">
@@ -266,9 +287,15 @@ export default function AdvancedDashboard() {
                 {[sessionsLoading, contactsLoading, messagesLoading, analyticsLoading].filter(Boolean).length}/4
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="w-full rounded-full h-2"
+              style={{ backgroundColor: `${colors.border}` }}
+            >
               <motion.div
-                className="bg-gradient-to-r from-emerald-500 to-green-600 h-2 rounded-full"
+                className="h-2 rounded-full"
+                style={{
+                  background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`
+                }}
                 initial={{ width: 0 }}
                 animate={{
                   width: `${((4 - [sessionsLoading, contactsLoading, messagesLoading, analyticsLoading].filter(Boolean).length) / 4) * 100}%`
@@ -303,7 +330,7 @@ export default function AdvancedDashboard() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 transition-colors duration-300 liquid-glass-bg">
       {/* Animated Header */}
       <AnimatedHeader
         title="WhatsPro Connect Dashboard"
@@ -312,16 +339,26 @@ export default function AdvancedDashboard() {
       />
 
       <div className="p-6 space-y-8">
-        {/* Advanced Control Panel */}
+        {/* Liquid Glass Control Panel */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between bg-gradient-to-r from-white/80 via-emerald-50/60 to-white/80 backdrop-blur-sm rounded-2xl p-4 border border-emerald-200/30 shadow-lg"
+          className="flex items-center justify-between rounded-3xl p-6 shadow-2xl transition-all duration-300 glass-card"
+          style={{
+            background: `linear-gradient(135deg,
+              rgba(255, 255, 255, 0.15) 0%,
+              rgba(255, 255, 255, 0.08) 100%)`,
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+          }}
         >
           <div className="flex items-center space-x-6">
             {/* Real-time Status */}
             <motion.div
-              className="flex items-center space-x-3 bg-white/70 rounded-xl px-4 py-2 shadow-sm"
+              className="flex items-center space-x-3 rounded-xl px-4 py-2 shadow-sm transition-colors duration-300"
+              style={{ backgroundColor: `${colors.background.secondary}70` }}
               whileHover={{ scale: 1.02 }}
             >
               <motion.div
@@ -350,15 +387,33 @@ export default function AdvancedDashboard() {
                 className="text-center"
                 whileHover={{ scale: 1.05 }}
               >
-                <div className="text-lg font-bold text-emerald-600">{stats.activeSessions}/{stats.totalSessions}</div>
-                <div className="text-xs text-gray-500">Sessions</div>
+                <div
+                  className="text-lg font-bold"
+                  style={{ color: colors.primary }}
+                >
+                  {stats.activeSessions}/{stats.totalSessions}
+                </div>
+                <div
+                  className="text-xs"
+                  style={{ color: colors.text.secondary }}
+                >
+                  Sessions
+                </div>
               </motion.div>
-              <div className="w-px h-8 bg-gray-300"></div>
+              <div
+                className="w-px h-8"
+                style={{ backgroundColor: colors.border }}
+              ></div>
               <motion.div
                 className="text-center"
                 whileHover={{ scale: 1.05 }}
               >
-                <div className="text-lg font-bold text-blue-600">{stats.uptime}%</div>
+                <div
+                  className="text-lg font-bold"
+                  style={{ color: colors.secondary }}
+                >
+                  {stats.uptime}%
+                </div>
                 <div className="text-xs text-gray-500">Uptime</div>
               </motion.div>
               <div className="w-px h-8 bg-gray-300"></div>
@@ -384,7 +439,10 @@ export default function AdvancedDashboard() {
                 setLoading(true)
                 setTimeout(() => setLoading(false), 2000)
               }}
-              className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              className="flex items-center space-x-2 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              style={{
+                background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`
+              }}
             >
               <Activity className="w-4 h-4" />
               <span className="text-sm font-medium">Refresh Data</span>
@@ -393,7 +451,10 @@ export default function AdvancedDashboard() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              className="flex items-center space-x-2 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              style={{
+                background: `linear-gradient(to right, ${colors.secondary}, ${colors.accent})`
+              }}
             >
               <Settings className="w-4 h-4" />
               <span className="text-sm font-medium">Settings</span>
@@ -437,7 +498,13 @@ export default function AdvancedDashboard() {
               className="group relative perspective-1000"
             >
               {/* Ultra-Modern Card Container */}
-              <div className="relative bg-gradient-to-br from-white/90 via-white/80 to-gray-50/90 backdrop-blur-2xl rounded-3xl p-8 border border-white/30 shadow-2xl overflow-hidden transform-gpu">
+              <div
+                className="relative backdrop-blur-2xl rounded-3xl p-8 shadow-2xl overflow-hidden transform-gpu transition-colors duration-300"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.background.secondary}90, ${colors.background.tertiary}80, ${colors.background.secondary}90)`,
+                  border: `1px solid ${colors.border}30`
+                }}
+              >
 
                 {/* Dynamic Background Pattern */}
                 <motion.div
@@ -563,7 +630,8 @@ export default function AdvancedDashboard() {
                 {/* Content with Advanced Typography */}
                 <div className="relative space-y-4">
                   <motion.h3
-                    className="text-sm font-bold text-gray-600 uppercase tracking-widest"
+                    className="text-sm font-bold uppercase tracking-widest transition-colors duration-300"
+                    style={{ color: colors.text.secondary }}
                     whileHover={{
                       color: card.color === 'emerald' ? '#059669' :
                              card.color === 'blue' ? '#1d4ed8' :
@@ -580,7 +648,8 @@ export default function AdvancedDashboard() {
                     transition={{ delay: index * 0.1 + 0.5 }}
                   >
                     <motion.span
-                      className="text-4xl font-black bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent"
+                      className="text-4xl font-black transition-colors duration-300"
+                      style={{ color: colors.text.primary }}
                       whileHover={{ scale: 1.05 }}
                     >
                       {formatNumber(value)}
@@ -660,9 +729,16 @@ export default function AdvancedDashboard() {
             className="flex items-center space-x-3"
             whileHover={{ scale: 1.02 }}
           >
-            <div className="flex items-center space-x-2 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl">
+            <div
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl"
+              style={{
+                backgroundColor: `${colors.primary}20`,
+                color: colors.primary
+              }}
+            >
               <motion.div
-                className="w-2 h-2 bg-emerald-500 rounded-full"
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: colors.primary }}
                 animate={{ scale: [1, 1.2, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
@@ -678,21 +754,21 @@ export default function AdvancedDashboard() {
               title: "Message Success Rate",
               value: `${stats.successRate}%`,
               change: stats.successRate > 95 ? "+2.3%" : stats.successRate > 90 ? "+1.1%" : "-0.5%",
-              color: "emerald",
+              color: "primary",
               icon: CheckCircle
             },
             {
               title: "Average Response Time",
               value: `${(stats.avgResponseTime / 1000).toFixed(1)}s`,
               change: stats.avgResponseTime < 2000 ? "-0.3s" : "+0.1s",
-              color: "blue",
+              color: "secondary",
               icon: Clock
             },
             {
               title: "Active Sessions",
               value: stats.activeSessions.toString(),
               change: stats.activeSessions > 0 ? `+${stats.activeSessions}` : "0",
-              color: "purple",
+              color: "accent",
               icon: Activity
             }
           ].map((metric, index) => (
@@ -706,11 +782,18 @@ export default function AdvancedDashboard() {
             >
               <div className="flex items-center justify-between mb-4">
                 <motion.div
-                  className={`p-3 rounded-xl bg-gradient-to-br ${
-                    metric.color === 'emerald' ? 'from-emerald-500 to-green-600' :
-                    metric.color === 'blue' ? 'from-blue-500 to-indigo-600' :
-                    'from-purple-500 to-violet-600'
-                  } shadow-lg`}
+                  className="p-3 rounded-xl shadow-lg"
+                  style={{
+                    background: `linear-gradient(135deg, ${
+                      metric.color === 'primary' ? colors.primary :
+                      metric.color === 'secondary' ? colors.secondary :
+                      colors.accent
+                    }, ${
+                      metric.color === 'primary' ? colors.secondary :
+                      metric.color === 'secondary' ? colors.accent :
+                      colors.primary
+                    })`
+                  }}
                   whileHover={{ scale: 1.1, rotate: 5 }}
                 >
                   <metric.icon className="w-5 h-5 text-white" />
@@ -733,10 +816,26 @@ export default function AdvancedDashboard() {
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-900">Message Volume Trends</h3>
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Messages Sent</span>
-              <div className="w-3 h-3 bg-blue-500 rounded-full ml-4"></div>
-              <span className="text-sm text-gray-600">Responses</span>
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: colors.primary }}
+              ></div>
+              <span
+                className="text-sm"
+                style={{ color: colors.text.secondary }}
+              >
+                Messages Sent
+              </span>
+              <div
+                className="w-3 h-3 rounded-full ml-4"
+                style={{ backgroundColor: colors.secondary }}
+              ></div>
+              <span
+                className="text-sm"
+                style={{ color: colors.text.secondary }}
+              >
+                Responses
+              </span>
             </div>
           </div>
 
@@ -754,14 +853,18 @@ export default function AdvancedDashboard() {
                 return chartData.map((height, index) => (
                   <motion.div
                     key={index}
-                    className="flex-1 bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t-sm relative"
+                    className="flex-1 rounded-t-sm relative"
+                    style={{
+                      background: `linear-gradient(to top, ${colors.primary}, ${colors.secondary})`
+                    }}
                     initial={{ height: 0 }}
                     animate={{ height: `${height}%` }}
                     transition={{ delay: 1.5 + index * 0.1, duration: 0.5 }}
                   >
                     {/* Real-time pulse effect */}
                     <motion.div
-                      className="absolute top-0 left-0 right-0 h-1 bg-emerald-300 rounded-t-sm"
+                      className="absolute top-0 left-0 right-0 h-1 rounded-t-sm"
+                      style={{ backgroundColor: colors.accent }}
                       animate={{ opacity: [0.5, 1, 0.5] }}
                       transition={{ duration: 2, repeat: Infinity, delay: index * 0.2 }}
                     />
@@ -773,7 +876,8 @@ export default function AdvancedDashboard() {
             {/* Real-time data indicator */}
             <div className="absolute top-2 right-2">
               <motion.div
-                className="w-2 h-2 bg-emerald-400 rounded-full"
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: colors.primary }}
                 animate={{ scale: [1, 1.3, 1], opacity: [0.7, 1, 0.7] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
@@ -887,7 +991,9 @@ export default function AdvancedDashboard() {
             <CardContent>
               <div className="space-y-3">
                 {Array.isArray(sessions) && sessions.length > 0 ? (
-                  sessions.map((session: any, index: number) => (
+                  sessions.map((session: any, index: number) => {
+                    console.log('🔍 Dashboard session status:', session.status, 'for session:', session.id)
+                    return (
                     <motion.div
                       key={session.id}
                       initial={{ opacity: 0, x: -20 }}
@@ -925,7 +1031,8 @@ export default function AdvancedDashboard() {
                         </p>
                       </div>
                     </motion.div>
-                  ))
+                    )
+                  })
                 ) : (
                   <div className="text-center py-8">
                     <Smartphone className="w-12 h-12 text-gray-400 mx-auto mb-3" />

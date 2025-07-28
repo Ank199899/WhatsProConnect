@@ -90,7 +90,60 @@ export function useRealTimeSync<T>(options: UseRealTimeSyncOptions) {
 
 // Specific hooks for different data types
 export function useRealTimeSessions() {
-  return useRealTimeSync<any>({ section: 'sessions' })
+  const realTimeData = useRealTimeSync<any>({ section: 'sessions' })
+  const [fallbackData, setFallbackData] = useState<any[]>([])
+  const [fallbackLoading, setFallbackLoading] = useState(true)
+
+  // Fallback API fetch when WebSocket is not connected
+  useEffect(() => {
+    const fetchFallbackData = async () => {
+      if (!realTimeData.isConnected) {
+        try {
+          setFallbackLoading(true)
+          console.log('🔄 WebSocket not connected, fetching sessions from API fallback')
+          const response = await fetch('/api/whatsapp/sessions')
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.sessions) {
+              console.log('✅ Fallback sessions loaded:', data.sessions.length)
+              setFallbackData(data.sessions)
+            }
+          }
+        } catch (error) {
+          console.error('❌ Fallback API fetch failed:', error)
+        } finally {
+          setFallbackLoading(false)
+        }
+      }
+    }
+
+    fetchFallbackData()
+
+    // Set up polling when WebSocket is not connected
+    if (!realTimeData.isConnected) {
+      const interval = setInterval(fetchFallbackData, 30000) // Poll every 30 seconds
+      return () => clearInterval(interval)
+    }
+  }, [realTimeData.isConnected])
+
+  // Return real-time data if connected, otherwise fallback data
+  return {
+    ...realTimeData,
+    data: realTimeData.isConnected ? realTimeData.data : fallbackData,
+    loading: realTimeData.isConnected ? realTimeData.loading : fallbackLoading,
+    refresh: realTimeData.isConnected ? realTimeData.refresh : () => {
+      setFallbackLoading(true)
+      fetch('/api/whatsapp/sessions')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.sessions) {
+            setFallbackData(data.sessions)
+          }
+        })
+        .catch(console.error)
+        .finally(() => setFallbackLoading(false))
+    }
+  }
 }
 
 export function useRealTimeContacts() {

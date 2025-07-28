@@ -40,6 +40,19 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
+        style={{
+          '--color-primary': '#296073',
+          '--color-secondary': '#3596B5',
+          '--color-accent': '#ADC5CF',
+          '--color-dark': '#1E293B',
+          '--color-light': '#F8FAFC',
+          '--color-bg-primary': '#FFFFFF',
+          '--color-bg-secondary': '#F8FAFC',
+          '--color-bg-tertiary': '#F1F5F9',
+          '--color-text-primary': '#1E293B',
+          '--color-text-secondary': '#64748B',
+          '--color-border': '#E2E8F0'
+        } as React.CSSProperties}
       >
         <ThemeProvider>
           <RealTimeProvider>

@@ -192,32 +192,77 @@ export default function LoginCredentialsDisplay() {
 
               {/* Quick Login Button */}
               <Button
-                onClick={() => {
-                  // Set localStorage and reload
-                  const adminUser = {
-                    id: cred.id,
-                    username: cred.username,
-                    email: cred.email,
-                    name: cred.name,
-                    role: cred.role,
-                    department: 'IT',
-                    permissions: cred.role === 'admin' ? ['*'] : [],
-                    isActive: true,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  }
-                  
-                  const sessionData = {
-                    token: `token-${cred.id}`,
-                    user: adminUser,
-                    timestamp: Date.now(),
-                    expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-                  }
+                onClick={async () => {
+                  try {
+                    // Set server storage and reload
+                    const adminUser = {
+                      id: cred.id,
+                      username: cred.username,
+                      email: cred.email,
+                      name: cred.name,
+                      role: cred.role,
+                      department: 'IT',
+                      permissions: cred.role === 'admin' ? ['*'] : [],
+                      isActive: true,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString()
+                    }
 
-                  localStorage.setItem('auth_token', `token-${cred.id}`)
-                  localStorage.setItem('user_data', JSON.stringify(adminUser))
-                  localStorage.setItem('session_info', JSON.stringify(sessionData))
-                  window.location.href = '/'
+                    const sessionData = {
+                      token: `token-${cred.id}`,
+                      user: adminUser,
+                      timestamp: Date.now(),
+                      expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+                    }
+
+                    // Import storage service and save to server
+                    const { AuthStorageService, setCurrentUser } = await import('../lib/storage-replacement')
+
+                    // Set current user for storage operations
+                    setCurrentUser(cred.id)
+
+                    // Save to server storage
+                    await Promise.all([
+                      AuthStorageService.setAuthToken(`token-${cred.id}`),
+                      AuthStorageService.setUserData(adminUser),
+                      AuthStorageService.setSessionInfo(sessionData)
+                    ])
+
+                    // Fallback to localStorage for immediate access
+                    localStorage.setItem('auth_token', `token-${cred.id}`)
+                    localStorage.setItem('user_data', JSON.stringify(adminUser))
+                    localStorage.setItem('session_info', JSON.stringify(sessionData))
+
+                    console.log('✅ Login data saved to server storage')
+                    window.location.href = '/'
+                  } catch (error) {
+                    console.error('❌ Error saving login data:', error)
+                    // Fallback to localStorage only
+                    const adminUser = {
+                      id: cred.id,
+                      username: cred.username,
+                      email: cred.email,
+                      name: cred.name,
+                      role: cred.role,
+                      department: 'IT',
+                      permissions: cred.role === 'admin' ? ['*'] : [],
+                      isActive: true,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString()
+                    }
+
+                    const sessionData = {
+                      token: `token-${cred.id}`,
+                      user: adminUser,
+                      timestamp: Date.now(),
+                      expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+                    }
+
+                    localStorage.setItem('auth_token', `token-${cred.id}`)
+                    localStorage.setItem('user_data', JSON.stringify(adminUser))
+                    localStorage.setItem('session_info', JSON.stringify(sessionData))
+                    window.location.href = '/'
+                  }
                 }}
                 className="w-full bg-green-600 hover:bg-green-700"
               >

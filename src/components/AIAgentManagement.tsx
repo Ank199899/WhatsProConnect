@@ -305,7 +305,7 @@ export default function AIAgentManagement() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Bot className="h-6 w-6 text-blue-600" />
+            <Bot className="h-6 w-6" style={{color: '#296073'}} />
             AI Agent Management
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -314,7 +314,8 @@ export default function AIAgentManagement() {
         </div>
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
+          className="text-white"
+          style={{background: 'linear-gradient(to right, #296073, #3596B5)'}}
         >
           <Plus className="h-4 w-4 mr-2" />
           Create Agent
@@ -329,7 +330,7 @@ export default function AIAgentManagement() {
               <p className="text-sm text-gray-600 dark:text-gray-400">Total Agents</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{agents.length}</p>
             </div>
-            <Bot className="h-8 w-8 text-blue-600" />
+            <Bot className="h-8 w-8" style={{color: '#296073'}} />
           </div>
         </Card>
         
@@ -337,9 +338,9 @@ export default function AIAgentManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Active Agents</p>
-              <p className="text-2xl font-bold text-green-600">{agents.filter(a => a.isActive).length}</p>
+              <p className="text-2xl font-bold" style={{color: '#3596B5'}}>{agents.filter(a => a.isActive).length}</p>
             </div>
-            <Power className="h-8 w-8 text-green-600" />
+            <Power className="h-8 w-8" style={{color: '#3596B5'}} />
           </div>
         </Card>
         
@@ -347,9 +348,9 @@ export default function AIAgentManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Assigned Sessions</p>
-              <p className="text-2xl font-bold text-purple-600">{agentSessions.filter(as => as.isEnabled).length}</p>
+              <p className="text-2xl font-bold" style={{color: '#ADC5CF'}}>{agentSessions.filter(as => as.isEnabled).length}</p>
             </div>
-            <Users className="h-8 w-8 text-purple-600" />
+            <Users className="h-8 w-8" style={{color: '#ADC5CF'}} />
           </div>
         </Card>
         
@@ -357,9 +358,9 @@ export default function AIAgentManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Available Sessions</p>
-              <p className="text-2xl font-bold text-orange-600">{sessions.length}</p>
+              <p className="text-2xl font-bold" style={{color: '#296073'}}>{sessions.length}</p>
             </div>
-            <MessageSquare className="h-8 w-8 text-orange-600" />
+            <MessageSquare className="h-8 w-8" style={{color: '#296073'}} />
           </div>
         </Card>
       </div>
@@ -501,7 +502,7 @@ export default function AIAgentManagement() {
             <Bot className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No AI Agents</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">Create your first AI agent to get started</p>
-            <Button onClick={() => setShowCreateModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button onClick={() => setShowCreateModal(true)} className="text-white" style={{background: 'linear-gradient(to right, #296073, #3596B5)'}}>
               <Plus className="h-4 w-4 mr-2" />
               Create Agent
             </Button>

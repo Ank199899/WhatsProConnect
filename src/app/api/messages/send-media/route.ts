@@ -56,12 +56,21 @@ async function handleFileUpload(file: File, sessionId: string, to: string, capti
       await mkdir(uploadsDir, { recursive: true })
     }
 
-    // Generate unique filename
-    const timestamp = Date.now()
+    // Use original filename directly to preserve it
     const originalName = file.name
-    const extension = originalName.split('.').pop()
-    const filename = `${timestamp}-${Math.random().toString(36).substring(7)}.${extension}`
+    const filename = originalName
     const filepath = join(uploadsDir, filename)
+
+    // Check if file already exists and add timestamp if needed
+    if (existsSync(filepath)) {
+      const timestamp = Date.now()
+      const extension = originalName.split('.').pop()
+      const nameWithoutExt = originalName.replace(/\.[^/.]+$/, "")
+      const uniqueFilename = `${nameWithoutExt}_${timestamp}.${extension}`
+      const uniqueFilepath = join(uploadsDir, uniqueFilename)
+      await writeFile(uniqueFilepath, buffer)
+      return { filename: uniqueFilename, filepath: uniqueFilepath }
+    }
 
     // Save file to disk
     const bytes = await file.arrayBuffer()
@@ -82,24 +91,42 @@ async function handleFileUpload(file: File, sessionId: string, to: string, capti
     }
 
     // Send media via WhatsApp API
-    const whatsappApiUrl = process.env.WHATSAPP_API_URL || 'http://localhost:3001'
+    const whatsappApiUrl = process.env.WHATSAPP_API_URL || 'http://localhost:3006'
+    const requestBody = {
+      sessionId,
+      to,
+      mediaType,
+      mediaUrl: `${getFrontendUrl()}${fileUrl}`,
+      caption: caption || '',
+      filename: originalName,
+      fileSize: file.size
+    }
+
+    console.log('📤 Sending to WhatsApp API:', `${whatsappApiUrl}/api/messages/send-media`)
+    console.log('📋 Request body:', requestBody)
+
     const whatsappResponse = await fetch(`${whatsappApiUrl}/api/messages/send-media`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        sessionId,
-        to,
-        mediaType,
-        mediaUrl: `${getFrontendUrl()}${fileUrl}`,
-        caption: caption || '',
-        filename: originalName,
-        fileSize: file.size
-      }),
+      body: JSON.stringify(requestBody),
     })
 
-    const whatsappResult = await whatsappResponse.json()
+    console.log('📡 WhatsApp API response status:', whatsappResponse.status)
+    console.log('📡 WhatsApp API response headers:', Object.fromEntries(whatsappResponse.headers.entries()))
+
+    const responseText = await whatsappResponse.text()
+    console.log('📡 WhatsApp API raw response:', responseText)
+
+    let whatsappResult
+    try {
+      whatsappResult = JSON.parse(responseText)
+    } catch (parseError) {
+      console.error('❌ Failed to parse WhatsApp API response as JSON:', parseError)
+      console.error('❌ Raw response was:', responseText)
+      throw new Error(`Invalid JSON response from WhatsApp API: ${responseText.substring(0, 200)}`)
+    }
 
     if (whatsappResult.success) {
       return NextResponse.json({

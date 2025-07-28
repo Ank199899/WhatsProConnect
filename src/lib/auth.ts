@@ -133,9 +133,9 @@ export class AuthService {
     }
   }
 
-  private saveUsersToStorage() {
+  private async saveUsersToStorage() {
     try {
-      // Check if we're in browser environment
+      // Save to localStorage for now (server storage disabled to avoid client-side issues)
       if (typeof window !== 'undefined' && window.localStorage) {
         const users = Array.from(this.users.values())
         localStorage.setItem('app_users', JSON.stringify(users))
@@ -189,84 +189,7 @@ export class AuthService {
 
     // If no other users found in storage, create sample data (only once)
     if (this.users.size === 1) { // Only admin exists
-      console.log('🔧 Initializing sample users for demo...')
-
-      // Create sample users
-      const sampleUsers: User[] = [
-        {
-          id: uuidv4(),
-          username: 'manager1',
-          email: 'manager@whatsapp-pro.com',
-          password: 'manager123', // Default password for demo
-          name: 'Team Manager',
-          role: 'manager',
-          department: 'Customer Service',
-          permissions: DEFAULT_PERMISSIONS.manager,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: uuidv4(),
-          username: 'agent1',
-          email: 'agent1@whatsapp-pro.com',
-          password: 'agent123', // Default password for demo
-          name: 'Support Agent 1',
-          role: 'agent',
-          department: 'Customer Service',
-          permissions: DEFAULT_PERMISSIONS.agent,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: uuidv4(),
-          username: 'agent2',
-          email: 'agent2@whatsapp-pro.com',
-          password: 'agent123', // Default password for demo
-          name: 'Support Agent 2',
-          role: 'agent',
-          department: 'Sales',
-          permissions: DEFAULT_PERMISSIONS.agent,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ]
-
-      sampleUsers.forEach(user => {
-        this.users.set(user.id, user)
-        console.log('Sample user stored:', user)
-      })
-
-      console.log('Total users in map:', this.users.size)
-      console.log('All users:', Array.from(this.users.values()))
-
-      // Create sample teams
-      const sampleTeams: Team[] = [
-        {
-          id: uuidv4(),
-          name: 'Customer Support',
-          description: 'Handle customer inquiries and support requests',
-          members: [sampleUsers[1].id, sampleUsers[2].id],
-          permissions: ['messages.read', 'messages.send', 'analytics.read'],
-          createdBy: adminUser.id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: uuidv4(),
-          name: 'Sales Team',
-          description: 'Manage sales inquiries and lead conversion',
-          members: [sampleUsers[2].id],
-          permissions: ['messages.read', 'messages.send', 'analytics.read'],
-          createdBy: adminUser.id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ]
-
-      sampleTeams.forEach(team => this.teams.set(team.id, team))
+      console.log('🔧 Demo users and teams creation disabled - using real users only...')
 
       // Save to localStorage for User Management sync
       this.saveUsersToStorage()

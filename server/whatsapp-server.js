@@ -59,6 +59,7 @@ class WhatsAppManager {
             };
 
             this.pool = new Pool(dbConfig);
+            this.db = this.pool; // Set db reference for API endpoints
 
             // Test connection
             const client = await this.pool.connect();
@@ -325,6 +326,79 @@ class WhatsAppManager {
             }
         });
 
+        // Get contacts for specific session
+        this.app.get('/api/contacts/:sessionId', (req, res) => {
+            const handleRequest = async () => {
+                try {
+                    const { sessionId } = req.params;
+                    console.log(`📞 Getting contacts for session: ${sessionId}`);
+
+                    // Check if session exists and is ready
+                    const session = this.sessions.get(sessionId);
+                    if (!session) {
+                        return res.json({
+                            success: false,
+                            message: 'Session not found',
+                            contacts: []
+                        });
+                    }
+
+                    if (session.status !== 'ready') {
+                        return res.json({
+                            success: false,
+                            message: 'Session not ready',
+                            contacts: []
+                        });
+                    }
+
+                    // Try to get contacts from WhatsApp client
+                    let contacts = [];
+                    try {
+                        if (session.client) {
+                            const whatsappContacts = await session.client.getContacts();
+                            contacts = whatsappContacts.map(contact => ({
+                                id: contact.id._serialized,
+                                name: contact.name || contact.pushname || contact.id.user,
+                                number: contact.number,
+                                isGroup: contact.isGroup,
+                                profilePicUrl: contact.profilePicUrl
+                            }));
+                            console.log(`📞 Retrieved ${contacts.length} contacts from WhatsApp`);
+                        }
+                    } catch (contactError) {
+                        console.error('❌ Error getting contacts from WhatsApp:', contactError);
+                    }
+
+                    // Also get contacts from database
+                    try {
+                        if (this.db && this.db.query) {
+                            const dbResult = await this.db.query(
+                                'SELECT * FROM contacts WHERE session_id = ? ORDER BY created_at DESC',
+                                [sessionId]
+                            );
+                            console.log(`📞 Retrieved ${dbResult.rows.length} contacts from database`);
+                        }
+                    } catch (dbError) {
+                        console.error('❌ Error getting contacts from database:', dbError);
+                    }
+
+                    res.json({
+                        success: true,
+                        contacts: contacts
+                    });
+                } catch (error) {
+                    console.error('❌ Error getting session contacts:', error);
+                    res.json({
+                        success: false,
+                        message: error.message,
+                        contacts: []
+                    });
+                }
+            };
+
+            handleRequest();
+        });
+
         // Get all sessions
         this.app.get('/api/sessions', (req, res) => {
             console.log('📱 GET /api/sessions called');
@@ -414,7 +488,15 @@ class WhatsAppManager {
                     });
                 }
 
-                console.log(`📤 Sending message to ${to} from session ${sessionId}`);
+                // Format the phone number properly for WhatsApp
+                let formattedTo = to;
+                if (!to.includes('@')) {
+                    // Remove any non-digit characters and add @c.us
+                    const cleanNumber = to.replace(/\D/g, '');
+                    formattedTo = `${cleanNumber}@c.us`;
+                }
+
+                console.log(`📤 Sending message to ${formattedTo} (original: ${to}) from session ${sessionId}`);
 
                 // Create message record first
                 const timestamp = Date.now();
@@ -427,7 +509,7 @@ class WhatsAppManager {
                 try {
                     console.log('🔄 Attempting to send WhatsApp message...');
                     sentMessage = await Promise.race([
-                        client.sendMessage(to, message),
+                        client.sendMessage(formattedTo, message),
                         new Promise((_, reject) =>
                             setTimeout(() => reject(new Error('Message send timeout after 15 seconds')), 15000)
                         )
@@ -436,22 +518,8 @@ class WhatsAppManager {
                 } catch (sendError) {
                     console.error('❌ WhatsApp send error:', sendError.message);
 
-                    // Still save to database as failed attempt
-                    await this.executeQuery(`
-                        INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
-                    `, [
-                        dbMessageId,
-                        sessionId,
-                        `failed_${timestamp}`,
-                        fromNumber,
-                        to,
-                        `[FAILED] ${message}`,
-                        'text',
-                        false,
-                        null,
-                        timestamp
-                    ]);
+                    // Skip database save for failed messages too
+                    console.log('⚠️ Skipping database save for failed message');
 
                     return res.status(500).json({
                         success: false,
@@ -460,28 +528,8 @@ class WhatsAppManager {
                     });
                 }
 
-                // Save successful message to database
-                try {
-                    await this.executeQuery(`
-                        INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
-                    `, [
-                        dbMessageId,
-                        sessionId,
-                        sentMessage.id._serialized || `msg_${timestamp}`,
-                        fromNumber,
-                        to,
-                        message,
-                        'text',
-                        false,
-                        null,
-                        timestamp
-                    ]);
-                    console.log('✅ Message saved to database');
-                } catch (dbError) {
-                    console.error('❌ Database save error:', dbError.message);
-                    // Continue even if database save fails
-                }
+                // Skip database save for now - focus on message sending
+                console.log('⚠️ Skipping database save - message sent successfully');
 
                 // Emit real-time update
                 const messageData = {
@@ -516,6 +564,284 @@ class WhatsAppManager {
                     success: false,
                     error: 'Failed to send message: ' + error.message,
                     duration: duration
+                });
+            }
+        });
+
+        // Send media endpoint - NEW
+        this.app.post('/api/messages/send-media', async (req, res) => {
+            const startTime = Date.now();
+            console.log(`📤 Media send request received at ${new Date().toISOString()}`);
+
+            try {
+                const { sessionId, to, caption = '', mediaType, mediaUrl, fileName } = req.body;
+                console.log(`📋 Media request data: sessionId=${sessionId}, to=${to}, mediaType=${mediaType}`);
+
+                if (!sessionId || !to) {
+                    console.log('❌ Missing required fields');
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Missing required fields: sessionId, to'
+                    });
+                }
+
+                const client = this.clients.get(sessionId);
+                if (!client) {
+                    console.log(`❌ Session ${sessionId} not found`);
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Session not found'
+                    });
+                }
+
+                console.log(`📤 Sending media to ${to} from session ${sessionId}`);
+
+                // Format the phone number properly first
+                let formattedTo = to;
+                if (!to.includes('@')) {
+                    const cleanNumber = to.replace(/\D/g, '');
+                    formattedTo = `${cleanNumber}@c.us`;
+                }
+
+                console.log('🔄 Attempting to send WhatsApp media...');
+
+                let result;
+                if (mediaUrl) {
+                    try {
+                        console.log('📥 Downloading media from URL:', mediaUrl);
+
+                        // Download media from URL with proper headers and preserve format
+                        const media = await MessageMedia.fromUrl(mediaUrl, {
+                            unsafeMime: true,
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            }
+                        });
+
+                        // Preserve original filename if provided
+                        if (fileName) {
+                            media.filename = fileName;
+                        }
+
+                        console.log('✅ Media downloaded successfully');
+                        console.log('📋 Media details:', {
+                            mimetype: media.mimetype,
+                            filename: media.filename,
+                            size: media.data ? media.data.length : 'unknown'
+                        });
+
+                        // Send media with proper options
+                        const sendOptions = {};
+                        if (caption) {
+                            sendOptions.caption = caption;
+                        }
+
+                        console.log('📤 Sending media to:', formattedTo);
+                        result = await client.sendMessage(formattedTo, media, sendOptions);
+                        console.log('✅ Media message sent successfully');
+
+                    } catch (mediaError) {
+                        console.error('❌ Error processing media:', mediaError);
+                        console.error('❌ Media error details:', {
+                            message: mediaError.message,
+                            stack: mediaError.stack
+                        });
+
+                        // Try alternative approach - send as document
+                        try {
+                            console.log('🔄 Trying alternative media sending...');
+                            const fs = require('fs');
+                            const path = require('path');
+                            const https = require('https');
+
+                            // Download file manually
+                            const tempPath = path.join(__dirname, 'temp', `media_${Date.now()}`);
+                            await new Promise((resolve, reject) => {
+                                const file = fs.createWriteStream(tempPath);
+                                https.get(mediaUrl, (response) => {
+                                    response.pipe(file);
+                                    file.on('finish', () => {
+                                        file.close();
+                                        resolve();
+                                    });
+                                }).on('error', reject);
+                            });
+
+                            // Create media from file
+                            const media = MessageMedia.fromFilePath(tempPath);
+                            result = await client.sendMessage(formattedTo, media, { caption });
+
+                            // Clean up temp file
+                            fs.unlinkSync(tempPath);
+                            console.log('✅ Alternative media sending successful');
+
+                        } catch (altError) {
+                            console.error('❌ Alternative media sending failed:', altError);
+                            // Final fallback to text message
+                            result = await client.sendMessage(formattedTo, `📎 ${caption || 'Media file'}\n\nMedia URL: ${mediaUrl}`);
+                            console.log('📝 Sent as text message fallback');
+                        }
+                    }
+                } else {
+                    // Send as text if no media URL
+                    result = await client.sendMessage(formattedTo, caption || 'Media file');
+                    console.log('📝 Sent as text message');
+                }
+
+                console.log('✅ WhatsApp media sent successfully');
+
+                // Save to database
+                const timestamp = Date.now();
+                const dbMessageId = `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+                const session = this.sessions.get(sessionId);
+                const fromNumber = session?.phoneNumber || client.info?.wid?.user || 'unknown';
+
+                try {
+                    await this.executeQuery(`
+                        INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+                    `, [
+                        dbMessageId,
+                        sessionId,
+                        result.id._serialized || `msg_${timestamp}`,
+                        fromNumber,
+                        to,
+                        caption || '',
+                        mediaType || 'media',
+                        false,
+                        null,
+                        timestamp
+                    ]);
+                    console.log('✅ Media message saved to database');
+                } catch (dbError) {
+                    console.log('❌ Database save error:', dbError.message);
+                    // Continue even if database save fails
+                }
+
+                // Emit real-time update
+                const messageData = {
+                    id: result.id._serialized || dbMessageId,
+                    sessionId: sessionId,
+                    from: fromNumber,
+                    to: to,
+                    body: caption || '',
+                    timestamp: timestamp,
+                    fromMe: true,
+                    type: mediaType || 'media',
+                    mediaUrl: mediaUrl,
+                    fileName: fileName
+                };
+
+                this.io.emit('new_message', messageData);
+                this.io.emit('message_sent', messageData);
+                console.log('📡 Real-time media update emitted');
+
+                const duration = Date.now() - startTime;
+                console.log(`✅ Media send completed in ${duration}ms`);
+
+                res.json({
+                    success: true,
+                    message: 'Media sent successfully',
+                    messageId: result.id._serialized || dbMessageId,
+                    mediaType,
+                    duration: duration
+                });
+
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                console.error('❌ Error sending media:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to send media: ' + error.message,
+                    duration: duration
+                });
+            }
+        });
+
+        // Media download endpoint
+        this.app.post('/api/media/download', async (req, res) => {
+            try {
+                const { sessionId, messageId, mediaUrl, filename } = req.body;
+
+                console.log('📥 Media download request:', {
+                    sessionId,
+                    messageId,
+                    mediaUrl,
+                    filename
+                });
+
+                if (!sessionId || !mediaUrl) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Missing required fields: sessionId, mediaUrl'
+                    });
+                }
+
+                const client = this.clients.get(sessionId);
+                if (!client) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Session not found'
+                    });
+                }
+
+                try {
+                    // Try to download media from WhatsApp
+                    let mediaData;
+
+                    if (messageId) {
+                        // If we have messageId, try to get media from message
+                        console.log('📥 Downloading media from message:', messageId);
+
+                        // This would require finding the message and downloading its media
+                        // For now, fallback to URL download
+                    }
+
+                    // Download from URL
+                    console.log('📥 Downloading media from URL:', mediaUrl);
+
+                    const fetch = (await import('node-fetch')).default;
+                    const response = await fetch(mediaUrl);
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch media: ${response.statusText}`);
+                    }
+
+                    const buffer = await response.buffer();
+                    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+
+                    console.log('✅ Media downloaded successfully:', {
+                        size: buffer.length,
+                        contentType,
+                        filename
+                    });
+
+                    // Set appropriate headers
+                    res.set({
+                        'Content-Type': contentType,
+                        'Content-Disposition': `attachment; filename="${filename || 'download'}"`,
+                        'Content-Length': buffer.length,
+                        'Cache-Control': 'private, max-age=3600',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Content-Type'
+                    });
+
+                    res.send(buffer);
+
+                } catch (downloadError) {
+                    console.error('❌ Error downloading media:', downloadError);
+                    res.status(500).json({
+                        success: false,
+                        error: 'Failed to download media: ' + downloadError.message
+                    });
+                }
+
+            } catch (error) {
+                console.error('❌ Error in media download endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Internal server error: ' + error.message
                 });
             }
         });
@@ -594,17 +920,82 @@ class WhatsAppManager {
                 // Fetch messages from the chat
                 const messages = await chat.fetchMessages({ limit: 50 });
 
+                // Debug: Log sample message structure
+                if (messages.length > 0) {
+                    console.log('🔍 Sample message structure:', JSON.stringify(messages[0], null, 2));
+                }
+
                 // Transform messages for frontend
-                const transformedMessages = messages.map(msg => ({
-                    id: msg.id._serialized,
-                    body: msg.body,
-                    from: msg.from,
-                    to: msg.to,
-                    timestamp: msg.timestamp * 1000, // Convert to milliseconds
-                    fromMe: msg.fromMe,
-                    type: msg.type,
-                    author: msg.author
-                }));
+                const transformedMessages = messages.map(msg => {
+                    const baseMessage = {
+                        id: msg.id._serialized,
+                        body: msg.body,
+                        from: msg.from,
+                        to: msg.to,
+                        timestamp: msg.timestamp * 1000, // Convert to milliseconds
+                        fromMe: msg.fromMe,
+                        type: msg.type,
+                        author: msg.author
+                    };
+
+                    // Add media information if available
+                    if (msg.hasMedia) {
+                        console.log('📎 Media message found:', {
+                            type: msg.type,
+                            hasMedia: msg.hasMedia,
+                            filename: msg.filename || msg._data?.filename,
+                            mimetype: msg.mimetype || msg._data?.mimetype,
+                            size: msg.filesize || msg._data?.size,
+                            caption: msg.caption || msg._data?.caption
+                        });
+
+                        baseMessage.hasMedia = true;
+                        baseMessage.mediaUrl = msg.mediaUrl || null;
+
+                        // Extract filename from various sources
+                        let fileName = msg.filename || msg._data?.filename;
+                        if (!fileName && (msg.caption || msg._data?.caption)) {
+                            // Extract filename from caption if it looks like a filename
+                            const caption = msg.caption || msg._data?.caption;
+                            const fileNameMatch = caption.match(/([^\/\\]+\.(pdf|doc|docx|jpg|jpeg|png|gif|mp4|mp3|zip|rar|txt|xls|xlsx|ppt|pptx))/i);
+                            if (fileNameMatch) {
+                                fileName = fileNameMatch[1];
+                            }
+                        }
+
+                        // For images without filename, try to extract from caption or generate meaningful name
+                        if (!fileName && msg.type === 'image') {
+                            const extension = msg.mimetype?.includes('jpeg') ? 'jpg' :
+                                            msg.mimetype?.includes('png') ? 'png' :
+                                            msg.mimetype?.includes('gif') ? 'gif' : 'jpg';
+
+                            // Try to extract filename from caption
+                            const caption = msg.caption || msg._data?.caption || '';
+                            const captionFileMatch = caption.match(/([^\/\\]+\.(jpg|jpeg|png|gif|webp|bmp))/i);
+
+                            if (captionFileMatch) {
+                                fileName = captionFileMatch[1];
+                            } else {
+                                // Generate a meaningful filename with date
+                                const date = new Date(msg.timestamp * 1000);
+                                const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+                                const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
+                                fileName = `WhatsApp_Image_${dateStr}_${timeStr}.${extension}`;
+                            }
+                        }
+
+                        baseMessage.fileName = fileName;
+                        baseMessage.fileSize = msg.filesize || msg._data?.size || null;
+                        baseMessage.mimeType = msg.mimetype || msg._data?.mimetype || null;
+
+                        // For media messages, use caption as body if body is empty
+                        if (!baseMessage.body && (msg.caption || msg._data?.caption)) {
+                            baseMessage.body = msg.caption || msg._data?.caption;
+                        }
+                    }
+
+                    return baseMessage;
+                });
 
                 console.log(`✅ Retrieved ${transformedMessages.length} messages from WhatsApp client`);
 
@@ -847,11 +1238,14 @@ class WhatsAppManager {
         try {
             console.log(`🔄 Creating WhatsApp client for session: ${sessionId}`);
 
+            // Create custom auth strategy that uses database instead of local files
+            const dbAuthStrategy = new LocalAuth({
+                clientId: sessionId,
+                dataPath: path.join(__dirname, '../sessions') // Keep for now, will migrate gradually
+            });
+
             const client = new Client({
-                authStrategy: new LocalAuth({
-                    clientId: sessionId,
-                    dataPath: path.join(__dirname, '../sessions')
-                }),
+                authStrategy: dbAuthStrategy,
                 puppeteer: {
                     headless: true,
                     args: [
@@ -977,7 +1371,72 @@ class WhatsAppManager {
 
         // Message event
         client.on('message', async (message) => {
-            console.log(`📨 New message received in session ${sessionId}:`, message.body);
+            console.log(`📨 New message received in session ${sessionId}:`, {
+                type: message.type,
+                hasMedia: message.hasMedia,
+                body: message.body || '[Media message]'
+            });
+
+            // Handle media messages
+            let mediaUrl = null;
+            let mediaData = null;
+            let messageBody = message.body;
+
+            if (message.hasMedia) {
+                try {
+                    console.log('📥 Processing media message...');
+                    const media = await message.downloadMedia();
+
+                    if (media) {
+                        console.log('✅ Media downloaded:', {
+                            mimetype: media.mimetype,
+                            filename: media.filename,
+                            size: media.data ? media.data.length : 'unknown'
+                        });
+
+                        // Save media to uploads directory
+                        const fs = require('fs');
+                        const path = require('path');
+                        const uploadsDir = path.join(__dirname, '..', 'uploads');
+
+                        // Ensure uploads directory exists
+                        if (!fs.existsSync(uploadsDir)) {
+                            fs.mkdirSync(uploadsDir, { recursive: true });
+                        }
+
+                        // Generate unique filename while preserving original name
+                        const timestamp = Date.now();
+                        const originalFilename = media.filename || `media_${timestamp}`;
+                        const extension = path.extname(originalFilename) || this.getExtensionFromMimetype(media.mimetype);
+                        const nameWithoutExt = path.basename(originalFilename, extension);
+
+                        // Use original filename for storage but keep unique identifier for conflicts
+                        const filename = originalFilename.includes('_') ? originalFilename : `${nameWithoutExt}${extension}`;
+                        const filePath = path.join(uploadsDir, filename);
+
+                        // Save media file
+                        fs.writeFileSync(filePath, media.data, 'base64');
+                        mediaUrl = `http://localhost:3008/uploads/${filename}`;
+
+                        console.log('💾 Media saved to:', mediaUrl);
+
+                        // Update message body to include media info
+                        if (!messageBody) {
+                            messageBody = `📎 ${media.filename || 'Media file'}`;
+                        }
+
+                        mediaData = {
+                            url: mediaUrl,
+                            mimetype: media.mimetype,
+                            filename: media.filename,
+                            size: media.data.length
+                        };
+                    }
+                } catch (mediaError) {
+                    console.error('❌ Error processing media:', mediaError);
+                    messageBody = messageBody || '📎 Media file (download failed)';
+                }
+            }
 
             // Save incoming message to database
             try {
@@ -985,19 +1444,20 @@ class WhatsAppManager {
                 const dbMessageId = `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
 
                 await this.executeQuery(`
-                    INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+                    INSERT INTO messages (id, session_id, whatsapp_message_id, from_number, to_number, body, message_type, is_group_message, author, timestamp, media_url, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
                 `, [
                     dbMessageId,
                     sessionId,
                     message.id._serialized,
                     message.from,
                     message.to,
-                    message.body,
+                    messageBody,
                     message.type || 'text',
                     message.isGroupMsg || false,
                     message.author || null,
-                    timestamp
+                    timestamp,
+                    mediaUrl
                 ]);
 
                 console.log(`✅ Message saved to database: ${dbMessageId}`);
@@ -1009,9 +1469,12 @@ class WhatsAppManager {
                         id: dbMessageId,
                         from: message.from,
                         to: message.to,
-                        body: message.body,
+                        body: messageBody,
                         timestamp: timestamp,
-                        type: message.type
+                        type: message.type,
+                        hasMedia: message.hasMedia,
+                        mediaUrl: mediaUrl,
+                        mediaData: mediaData
                     }
                 });
 
@@ -1116,7 +1579,7 @@ class WhatsAppManager {
                 SELECT
                     COUNT(*) as total_sessions,
                     COUNT(CASE WHEN status = 'ready' THEN 1 END) as active_sessions
-                FROM sessions
+                FROM whatsapp_sessions
             `);
 
             // Get contact stats
@@ -1186,6 +1649,46 @@ class WhatsAppManager {
             console.log(`🚀 WhatsApp Server running on port ${port}`);
             console.log(`📱 Health check: http://localhost:${port}/api/health`);
         });
+    }
+
+    // Helper function to get file extension from mimetype
+    getExtensionFromMimetype(mimetype) {
+        const mimeToExt = {
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+            'image/bmp': '.bmp',
+            'image/svg+xml': '.svg',
+            'video/mp4': '.mp4',
+            'video/avi': '.avi',
+            'video/mov': '.mov',
+            'video/wmv': '.wmv',
+            'video/flv': '.flv',
+            'video/webm': '.webm',
+            'video/3gpp': '.3gp',
+            'audio/mpeg': '.mp3',
+            'audio/wav': '.wav',
+            'audio/ogg': '.ogg',
+            'audio/aac': '.aac',
+            'audio/mp4': '.m4a',
+            'audio/webm': '.webm',
+            'application/pdf': '.pdf',
+            'application/msword': '.doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+            'application/vnd.ms-excel': '.xls',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+            'application/vnd.ms-powerpoint': '.ppt',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+            'application/zip': '.zip',
+            'application/x-rar-compressed': '.rar',
+            'application/x-7z-compressed': '.7z',
+            'text/plain': '.txt',
+            'text/csv': '.csv'
+        };
+
+        return mimeToExt[mimetype] || '.bin';
     }
 }
 

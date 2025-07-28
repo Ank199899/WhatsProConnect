@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { getBackendUrl } from '@/lib/config'
+import { updateGlobalSessions } from '@/hooks/useSharedSessions'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -85,6 +86,12 @@ export default function WhatsAppNumbers() {
           }))
 
           setSessions(mappedSessions)
+
+          // Update shared sessions for all components
+          console.log('🔄 WhatsAppNumbers: Updating shared sessions:', mappedSessions.length)
+          console.log('📡 WhatsAppNumbers: Raw sessions data:', data.sessions)
+          updateGlobalSessions(data.sessions)
+
           console.log('✅ Loaded WhatsApp sessions:', mappedSessions.length)
           console.log('📋 Session details:', mappedSessions.map(s => ({ id: s.id, name: s.name, status: s.status, phone: s.phone_number })))
           return
@@ -440,7 +447,7 @@ export default function WhatsAppNumbers() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'ready': return <CheckCircle className="text-green-500" size={20} />
+      case 'ready': return <CheckCircle className="text-blue-500" size={20} />
       case 'qr_code': return <QrCode className="text-yellow-500" size={20} />
       default: return <AlertTriangle className="text-gray-500" size={20} />
     }
@@ -535,6 +542,12 @@ export default function WhatsAppNumbers() {
     console.log('🚀 Component mounted, loading sessions...')
     loadSessions()
 
+    // Auto-refresh sessions every 10 seconds to ensure latest status
+    const refreshInterval = setInterval(() => {
+      console.log('🔄 Auto-refreshing sessions...')
+      loadSessions()
+    }, 10000)
+
     // Setup Socket.IO connection with throttling
     const socketConnection = io(API_BASE_URL, {
       transports: ['websocket'],
@@ -592,26 +605,28 @@ export default function WhatsAppNumbers() {
       }
     })
 
-    // Listen for client disconnected events
+    // Listen for client disconnected events - TEMPORARILY DISABLED TO FIX STATUS ISSUE
     socketConnection.on('client_disconnected', (data: { sessionId: string, reason: string }) => {
-      console.log('🔌 Client disconnected for session:', data.sessionId)
+      console.log('🔌 Client disconnected for session:', data.sessionId, '- IGNORING TO PREVENT STATUS OVERRIDE')
 
-      setSessions(prev => prev.map(session =>
-        session.id === data.sessionId
-          ? { ...session, status: 'disconnected', is_active: false }
-          : session
-      ))
+      // DISABLED: Don't override status from socket events, use API status instead
+      // setSessions(prev => prev.map(session =>
+      //   session.id === data.sessionId
+      //     ? { ...session, status: 'disconnected', is_active: false }
+      //     : session
+      // ))
     })
 
-    // Listen for auth failure events
+    // Listen for auth failure events - TEMPORARILY DISABLED TO FIX STATUS ISSUE
     socketConnection.on('auth_failure', (data: { sessionId: string }) => {
-      console.log('❌ Auth failure for session:', data.sessionId)
+      console.log('❌ Auth failure for session:', data.sessionId, '- IGNORING TO PREVENT STATUS OVERRIDE')
 
-      setSessions(prev => prev.map(session =>
-        session.id === data.sessionId
-          ? { ...session, status: 'auth_failure', qr_code: null, is_active: false }
-          : session
-      ))
+      // DISABLED: Don't override status from socket events, use API status instead
+      // setSessions(prev => prev.map(session =>
+      //   session.id === data.sessionId
+      //     ? { ...session, status: 'auth_failure', qr_code: null, is_active: false }
+      //     : session
+      // ))
     })
 
     // Listen for sessions updates from backend (throttled)
@@ -637,6 +652,8 @@ export default function WhatsAppNumbers() {
     }, 60000) // 1 minute
 
     return () => {
+      console.log('🧹 Cleaning up intervals and socket connection...')
+      clearInterval(refreshInterval)
       clearInterval(interval)
       socketConnection.disconnect()
     }
@@ -771,43 +788,97 @@ export default function WhatsAppNumbers() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between bg-gradient-to-r from-white/80 via-emerald-50/60 to-white/80 backdrop-blur-sm rounded-2xl p-6 border border-emerald-200/30 shadow-lg mb-8"
+          className="group relative flex items-center justify-between bg-gradient-to-r from-white/80 via-blue-50/60 to-white/80 backdrop-blur-sm rounded-2xl p-6 border border-blue-200/30 shadow-lg mb-8 overflow-hidden"
         >
-          <div className="flex items-center space-x-6">
+          {/* Border Animation - Only on hover */}
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none overflow-hidden">
+            {/* Top border line */}
+            <motion.div
+              className="absolute top-0 left-0 h-[2px] w-20 bg-gradient-to-r from-transparent via-blue-500 to-transparent"
+              animate={{
+                x: ['-80px', 'calc(100% + 80px)']
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+            />
+            {/* Right border line */}
+            <motion.div
+              className="absolute top-0 right-0 w-[2px] h-20 bg-gradient-to-b from-transparent via-blue-500 to-transparent"
+              animate={{
+                y: ['-80px', 'calc(100% + 80px)']
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "linear",
+                delay: 1
+              }}
+            />
+            {/* Bottom border line */}
+            <motion.div
+              className="absolute bottom-0 right-0 h-[2px] w-20 bg-gradient-to-l from-transparent via-blue-500 to-transparent"
+              animate={{
+                x: ['80px', 'calc(-100% - 80px)']
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "linear",
+                delay: 2
+              }}
+            />
+            {/* Left border line */}
+            <motion.div
+              className="absolute bottom-0 left-0 w-[2px] h-20 bg-gradient-to-t from-transparent via-blue-500 to-transparent"
+              animate={{
+                y: ['80px', 'calc(-100% - 80px)']
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "linear",
+                delay: 3
+              }}
+            />
+          </div>
+          <div className="relative flex items-center space-x-6 z-10">
             {/* Real-time Status */}
             <motion.div
               className="flex items-center space-x-3 bg-white/70 rounded-xl px-4 py-2 shadow-sm"
               whileHover={{ scale: 1.02 }}
             >
               <motion.div
-                className="w-3 h-3 bg-green-500 rounded-full"
+                className="w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"
                 animate={{ scale: [1, 1.2, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
-              <span className="text-sm font-medium text-gray-700">Sessions Active</span>
+              <span className="text-sm font-bold bg-gradient-to-r from-gray-700 to-gray-600 bg-clip-text text-transparent">Sessions Active</span>
             </motion.div>
 
             {/* Quick Stats */}
             <div className="flex items-center space-x-4">
               <motion.div
-                className="text-center"
+                className="text-center bg-white/50 rounded-lg px-3 py-2"
                 whileHover={{ scale: 1.05 }}
               >
-                <div className="text-lg font-bold text-emerald-600">{sessions.length}</div>
-                <div className="text-xs text-gray-500">Connected</div>
+                <div className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{sessions.length}</div>
+                <div className="text-xs text-gray-600 font-medium">Connected</div>
               </motion.div>
               <div className="w-px h-8 bg-gray-300"></div>
               <motion.div
-                className="text-center"
+                className="text-center bg-white/50 rounded-lg px-3 py-2"
                 whileHover={{ scale: 1.05 }}
               >
-                <div className="text-lg font-bold text-blue-600">100%</div>
-                <div className="text-xs text-gray-500">Uptime</div>
+                <div className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">100%</div>
+                <div className="text-xs text-gray-600 font-medium">Uptime</div>
               </motion.div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="relative flex items-center space-x-3 z-10">
             {/* Action Buttons */}
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -823,7 +894,7 @@ export default function WhatsAppNumbers() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
               <Plus className="w-4 h-4" />
               <span className="text-sm font-medium">Add Session</span>
@@ -862,18 +933,23 @@ export default function WhatsAppNumbers() {
               className="group relative"
             >
               {/* Ultra-Modern Session Card */}
-              <div className="relative bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-white/20 shadow-2xl overflow-hidden">
+              <div className="group relative bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-white/20 shadow-2xl overflow-hidden">
+                {/* Animated Border */}
+                <div className="absolute inset-0 rounded-3xl">
+                  <div className="absolute inset-0 rounded-3xl border-2 border-transparent bg-gradient-to-r from-[#2B4C8C] via-[#4A6FA5] to-[#2B4C8C] group-hover:animate-spin-slow opacity-30"></div>
+                  <div className="absolute inset-[2px] rounded-3xl bg-white/90"></div>
+                </div>
 
                 {/* Dynamic Background Pattern */}
                 <motion.div
-                  className="absolute inset-0 opacity-5"
+                  className="absolute inset-0 opacity-5 z-10"
                   style={{
                     backgroundImage: `radial-gradient(circle at 20% 80%, ${
-                      session.status === 'ready' ? '#10b981' :
+                      session.status === 'ready' ? '#3b82f6' :
                       session.status === 'qr_code' ? '#f59e0b' : '#ef4444'
                     } 0%, transparent 50%),
                                      radial-gradient(circle at 80% 20%, ${
-                      session.status === 'ready' ? '#059669' :
+                      session.status === 'ready' ? '#2563eb' :
                       session.status === 'qr_code' ? '#d97706' : '#dc2626'
                     } 0%, transparent 50%)`
                   }}
@@ -888,12 +964,12 @@ export default function WhatsAppNumbers() {
                 />
 
                 {/* Floating Particles */}
-                <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute inset-0 overflow-hidden z-10">
                   {[...Array(3)].map((_, i) => (
                     <motion.div
                       key={i}
                       className={`absolute w-1.5 h-1.5 rounded-full opacity-40 ${
-                        session.status === 'ready' ? 'bg-emerald-400' :
+                        session.status === 'ready' ? 'bg-blue-400' :
                         session.status === 'qr_code' ? 'bg-amber-400' : 'bg-red-400'
                       }`}
                       style={{
@@ -916,10 +992,10 @@ export default function WhatsAppNumbers() {
                 </div>
 
                 {/* Header with Status */}
-                <div className="relative flex items-center justify-between mb-6">
+                <div className="relative flex items-center justify-between mb-6 z-20">
                   <motion.div
                     className={`relative p-4 rounded-2xl shadow-xl ${
-                      session.status === 'ready' ? 'bg-gradient-to-br from-emerald-500 to-green-600' :
+                      session.status === 'ready' ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
                       session.status === 'qr_code' ? 'bg-gradient-to-br from-amber-500 to-orange-600' :
                       'bg-gradient-to-br from-red-500 to-rose-600'
                     }`}
@@ -956,7 +1032,7 @@ export default function WhatsAppNumbers() {
                   {/* Status Badge */}
                   <motion.div
                     className={`flex items-center space-x-2 px-3 py-1.5 rounded-full backdrop-blur-sm ${
-                      session.status === 'ready' ? 'bg-green-100/80 text-green-700 border border-green-200/50' :
+                      session.status === 'ready' ? 'bg-blue-100/80 text-blue-700 border border-blue-200/50' :
                       session.status === 'qr_code' ? 'bg-amber-100/80 text-amber-700 border border-amber-200/50' :
                       'bg-red-100/80 text-red-700 border border-red-200/50'
                     }`}
@@ -967,7 +1043,7 @@ export default function WhatsAppNumbers() {
                   >
                     <motion.div
                       className={`w-2 h-2 rounded-full ${
-                        session.status === 'ready' ? 'bg-green-500' :
+                        session.status === 'ready' ? 'bg-blue-500' :
                         session.status === 'qr_code' ? 'bg-amber-500' :
                         'bg-red-500'
                       }`}
@@ -984,22 +1060,26 @@ export default function WhatsAppNumbers() {
                 </div>
 
                 {/* Session Info */}
-                <div className="relative space-y-4">
+                <div className="relative space-y-4 z-20">
                   <motion.h3
-                    className="text-lg font-bold text-gray-900"
+                    className="text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent"
                     whileHover={{ scale: 1.02 }}
                   >
                     {session.name}
                   </motion.h3>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Phone:</span>
-                      <span className="font-medium text-gray-900">{session.phone_number || session.phone || 'Not set'}</span>
+                      <span className="text-gray-600 font-medium">Phone:</span>
+                      <span className="font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">
+                        {session.phone_number || session.phone || 'Not set'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Last Active:</span>
-                      <span className="font-medium text-gray-900">{session.lastSeen || session.updated_at || 'Never'}</span>
+                      <span className="text-gray-600 font-medium">Last Active:</span>
+                      <span className="font-medium text-gray-700 bg-gray-50 px-3 py-1 rounded-lg">
+                        {session.lastSeen || session.updated_at || 'Never'}
+                      </span>
                     </div>
                   </div>
 
@@ -1019,7 +1099,7 @@ export default function WhatsAppNumbers() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => connectSession(session.id)}
-                      className="flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg hover:shadow-xl"
+                      className="flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg hover:shadow-xl"
                     >
                       <Smartphone className="w-4 h-4" />
                       <span>Connect</span>
@@ -1074,7 +1154,7 @@ export default function WhatsAppNumbers() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowCreateModal(true)}
-              className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
               Create Real Session
             </motion.button>
@@ -1088,14 +1168,14 @@ export default function WhatsAppNumbers() {
             className="text-center py-16"
           >
             <motion.div
-              className="w-24 h-24 bg-gradient-to-br from-emerald-100 to-green-200 rounded-3xl flex items-center justify-center mx-auto mb-6"
+              className="w-24 h-24 bg-gradient-to-br from-blue-100 to-blue-200 rounded-3xl flex items-center justify-center mx-auto mb-6"
               animate={{
                 rotate: [0, 5, -5, 0],
                 scale: [1, 1.05, 1]
               }}
               transition={{ duration: 4, repeat: Infinity }}
             >
-              <Smartphone className="w-12 h-12 text-emerald-600" />
+              <Smartphone className="w-12 h-12 text-blue-600" />
             </motion.div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">No Sessions Yet</h3>
             <p className="text-gray-600 mb-6">Create your first WhatsApp session to get started</p>
@@ -1103,7 +1183,7 @@ export default function WhatsAppNumbers() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowCreateModal(true)}
-              className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
               Create First Session
             </motion.button>
@@ -1141,7 +1221,7 @@ export default function WhatsAppNumbers() {
         {selectedSession && (
           <div className="space-y-6">
             <div className="text-center">
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-100">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-50 p-6 rounded-2xl border border-blue-100">
                 <div className="w-64 h-64 mx-auto bg-white rounded-xl shadow-lg flex items-center justify-center border-2 border-dashed border-gray-300">
                   {qrImage ? (
                     <motion.div
@@ -1161,7 +1241,7 @@ export default function WhatsAppNumbers() {
                       <motion.div
                         animate={{ rotate: 360 }}
                         transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4"
+                        className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"
                       />
                       <p className="text-gray-600">Generating QR Code...</p>
                     </div>
@@ -1196,7 +1276,7 @@ export default function WhatsAppNumbers() {
               </Button>
               <Button
                 onClick={() => generateQR(selectedSession.id)}
-                className="px-6 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                className="px-6 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh QR

@@ -257,18 +257,18 @@ export function groupMessagesByDate(messages: any[]) {
 export const themes = {
   light: {
     primary: 'bg-white',
-    secondary: 'bg-gray-50',
-    accent: 'bg-blue-500',
-    text: 'text-gray-900',
-    textSecondary: 'text-gray-600',
-    border: 'border-gray-200'
+    secondary: 'bg-slate-50',
+    accent: 'bg-slate-600',
+    text: 'text-slate-900',
+    textSecondary: 'text-slate-600',
+    border: 'border-slate-200'
   },
   dark: {
-    primary: 'bg-gray-900',
-    secondary: 'bg-gray-800',
-    accent: 'bg-blue-600',
+    primary: 'bg-slate-900',
+    secondary: 'bg-slate-800',
+    accent: 'bg-slate-600',
     text: 'text-white',
-    textSecondary: 'text-gray-300',
-    border: 'border-gray-700'
+    textSecondary: 'text-slate-300',
+    border: 'border-slate-700'
   }
 }

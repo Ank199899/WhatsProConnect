@@ -77,6 +77,11 @@ export class WhatsAppManagerClient {
     this.baseUrl = baseUrl || getBackendUrl()
 
     console.log('🔧 WhatsApp Manager initialized with FIXED URL:', this.baseUrl)
+    console.log('🔍 Environment check:', {
+      NODE_ENV: process.env.NODE_ENV,
+      WHATSAPP_BACKEND_URL: process.env.WHATSAPP_BACKEND_URL,
+      isClient: typeof window !== 'undefined'
+    })
   }
 
   // Initialize socket connection
@@ -181,6 +186,55 @@ export class WhatsAppManagerClient {
     this.socket.on('contacts_updated', (data: any) => {
       console.log('👤 Contacts updated:', data)
       this.contactUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Real-time presence updates
+    this.socket.on('presence_update', (data: any) => {
+      console.log('👤 Presence update received:', data)
+      this.presenceUpdateListeners.forEach(listener => listener(data))
+    })
+
+    // Real-time typing status
+    this.socket.on('typing_status', (data: any) => {
+      console.log('⌨️ Typing status received:', data)
+      this.typingStatusListeners.forEach(listener => listener(data))
+    })
+
+    // Message status updates (sent, delivered, read)
+    this.socket.on('message_status_update', (data: any) => {
+      console.log('✅ Message status update:', data)
+      // Trigger message listeners to update status
+      this.messageListeners.forEach(listener => listener({
+        type: 'status_update',
+        ...data
+      }))
+    })
+
+    // Message acknowledgment (sent confirmation)
+    this.socket.on('message_ack', (data: any) => {
+      console.log('📤 Message acknowledgment:', data)
+      this.messageListeners.forEach(listener => listener({
+        type: 'message_ack',
+        ...data
+      }))
+    })
+
+    // Message delivery confirmation
+    this.socket.on('message_delivered', (data: any) => {
+      console.log('📬 Message delivered:', data)
+      this.messageListeners.forEach(listener => listener({
+        type: 'message_delivered',
+        ...data
+      }))
+    })
+
+    // Message read confirmation
+    this.socket.on('message_read', (data: any) => {
+      console.log('👁️ Message read:', data)
+      this.messageListeners.forEach(listener => listener({
+        type: 'message_read',
+        ...data
+      }))
     })
 
     // Contact profile updated event
@@ -486,8 +540,10 @@ export class WhatsAppManagerClient {
   async getChats(sessionId: string) {
     try {
       console.log(`📱 WhatsAppManager: Getting chats for session ${sessionId}`)
+      console.log(`🔗 WhatsAppManager: Using URL: ${this.baseUrl}/api/sessions/${sessionId}/chats`)
       const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/chats`)
 
+      console.log(`📡 WhatsAppManager: Response status: ${response.status}`)
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
@@ -496,6 +552,7 @@ export class WhatsAppManagerClient {
       console.log(`✅ WhatsAppManager: Received chats response:`, data)
 
       if (data.success) {
+        console.log(`📊 WhatsAppManager: Returning ${data.chats?.length || 0} chats`)
         return data.chats || []
       }
 
@@ -577,18 +634,52 @@ export class WhatsAppManagerClient {
   // Get messages for a specific chat (alias for getChatMessages)
   async getMessages(sessionId: string, contactNumber: string) {
     try {
-      console.log('🔄 Getting messages for:', contactNumber)
+      console.log('🔄 Getting messages for:', { sessionId, contactNumber })
 
-      // Get messages directly from WhatsApp client via server
-      const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/messages/${encodeURIComponent(contactNumber)}`)
-      const data = await response.json()
+      // First try to get from database via Next.js API
+      const dbApiUrl = `/api/sessions/${sessionId}/messages/${encodeURIComponent(contactNumber)}`
+      console.log('🔗 Database API URL:', dbApiUrl)
 
-      if (data.success && data.messages) {
-        console.log('✅ Got messages from WhatsApp client:', data.messages.length)
-        return data.messages
+      try {
+        const dbResponse = await fetch(dbApiUrl)
+        console.log('📡 Database API Response status:', dbResponse.status, dbResponse.statusText)
+
+        if (dbResponse.ok) {
+          const dbData = await dbResponse.json()
+          console.log('📊 Database API Response:', dbData)
+
+          if (dbData.success && dbData.messages && dbData.messages.length > 0) {
+            console.log('✅ Got messages from database:', dbData.messages.length)
+            console.log('📨 Sample database messages:', dbData.messages.slice(0, 2))
+            return dbData.messages
+          }
+        }
+      } catch (dbError) {
+        console.warn('⚠️ Database API failed, trying WhatsApp server:', dbError)
       }
 
-      console.log('⚠️ No messages found or API error:', data.error)
+      // Fallback: Get messages directly from WhatsApp server
+      const whatsappApiUrl = `${this.baseUrl}/api/sessions/${sessionId}/messages/${encodeURIComponent(contactNumber)}`
+      console.log('🔗 WhatsApp Server API URL:', whatsappApiUrl)
+
+      const whatsappResponse = await fetch(whatsappApiUrl)
+      console.log('📡 WhatsApp Server Response status:', whatsappResponse.status, whatsappResponse.statusText)
+
+      if (!whatsappResponse.ok) {
+        console.error('❌ WhatsApp Server HTTP Error:', whatsappResponse.status, whatsappResponse.statusText)
+        return []
+      }
+
+      const whatsappData = await whatsappResponse.json()
+      console.log('📊 WhatsApp Server API Response:', whatsappData)
+
+      if (whatsappData.success && whatsappData.messages) {
+        console.log('✅ Got messages from WhatsApp server:', whatsappData.messages.length)
+        console.log('📨 Sample WhatsApp messages:', whatsappData.messages.slice(0, 2))
+        return whatsappData.messages
+      }
+
+      console.log('⚠️ No messages found from any source')
       return []
     } catch (error) {
       console.error('❌ Error getting messages:', error)
@@ -656,6 +747,60 @@ export class WhatsAppManagerClient {
       })
     } else {
       console.warn('⚠️ Socket not available for chat update listener')
+    }
+  }
+
+  // Real-time presence updates
+  onPresenceUpdate(callback: (data: { chatId: string; isOnline: boolean; lastSeen?: number }) => void) {
+    console.log('🎯 Setting up presence update listener')
+    if (this.socket) {
+      this.socket.on('presence_update', (data: any) => {
+        console.log('👤 Received presence update:', data)
+        callback(data)
+      })
+    } else {
+      console.warn('⚠️ Socket not available for presence listener')
+    }
+  }
+
+  // Real-time typing status
+  onTypingStatus(callback: (data: { chatId: string; isTyping: boolean }) => void) {
+    console.log('🎯 Setting up typing status listener')
+    if (this.socket) {
+      this.socket.on('typing_status', (data: any) => {
+        console.log('⌨️ Received typing status:', data)
+        callback(data)
+      })
+    } else {
+      console.warn('⚠️ Socket not available for typing listener')
+    }
+  }
+
+  // Message status updates
+  onMessageStatusUpdate(callback: (data: { messageId: string; status: 'sent' | 'delivered' | 'read'; timestamp: number }) => void) {
+    console.log('🎯 Setting up message status listener')
+    if (this.socket) {
+      this.socket.on('message_status_update', (data: any) => {
+        console.log('✅ Received message status update:', data)
+        callback(data)
+      })
+
+      this.socket.on('message_ack', (data: any) => {
+        console.log('📤 Message acknowledged:', data)
+        callback({ ...data, status: 'sent' })
+      })
+
+      this.socket.on('message_delivered', (data: any) => {
+        console.log('📬 Message delivered:', data)
+        callback({ ...data, status: 'delivered' })
+      })
+
+      this.socket.on('message_read', (data: any) => {
+        console.log('👁️ Message read:', data)
+        callback({ ...data, status: 'read' })
+      })
+    } else {
+      console.warn('⚠️ Socket not available for message status listener')
     }
   }
 

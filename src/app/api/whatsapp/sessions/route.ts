@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { addDemoSession, getDemoSessions, removeDemoSession } from '@/lib/sessionStorage'
 import { getBackendUrl } from '@/lib/config'
+import { setSession, getSessions, type WhatsAppSession } from '@/lib/sessionStore'
 
 // Real WhatsApp sessions storage (in production this would be in database)
 let realSessions: any[] = []
@@ -42,6 +43,12 @@ async function getRealWhatsAppSessions() {
       console.log('📱 Response is array:', Array.isArray(data))
       console.log('📱 Response length:', data?.length)
 
+      // Debug: Check individual session status
+      if (Array.isArray(data) && data.length > 0) {
+        console.log('🔍 First session status:', data[0].status)
+        console.log('🔍 First session data:', JSON.stringify(data[0], null, 2))
+      }
+
       // Handle different response formats
       if (Array.isArray(data)) {
         // Direct array response
@@ -56,11 +63,23 @@ async function getRealWhatsAppSessions() {
           qrCode: session.qrCode,
           isReady: session.status === 'ready'
         }))
+        console.log('🔄 Mapped sessions:', JSON.stringify(realSessions, null, 2))
         return realSessions
       } else if (data.sessions) {
-        // Wrapped in sessions property
-        realSessions = data.sessions
-        return data.sessions
+        // Wrapped in sessions property - map the status correctly
+        realSessions = data.sessions.map(session => ({
+          id: session.id,
+          sessionId: session.id,
+          name: session.name,
+          status: session.status === 'ready' ? 'connected' : session.status,
+          phoneNumber: session.phoneNumber,
+          lastActivity: session.createdAt || new Date().toISOString(),
+          messageCount: 0,
+          qrCode: session.qrCode,
+          isReady: session.status === 'ready'
+        }))
+        console.log('🔄 Mapped sessions (from data.sessions):', JSON.stringify(realSessions, null, 2))
+        return realSessions
       }
     }
   } catch (error) {
@@ -76,7 +95,7 @@ async function getRealWhatsAppSessions() {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔍 Fetching all WhatsApp sessions...')
+    console.log('🔍 Fetching all WhatsApp sessions... [DEBUG MODE]')
 
     // Direct fetch test
     try {
@@ -85,17 +104,24 @@ export async function GET(request: NextRequest) {
         const directData = await directResponse.json()
         console.log('✅ Direct fetch successful:', directData.length, 'sessions')
         
-        const transformedSessions = directData.map((session: any) => ({
-          id: session.id,
-          sessionId: session.id,
-          name: session.name,
-          status: session.status === 'ready' ? 'connected' : session.status,
-          phoneNumber: session.phoneNumber,
-          lastActivity: session.createdAt || new Date().toISOString(),
-          messageCount: 0,
-          qrCode: session.qrCode,
-          isReady: session.status === 'ready'
-        }))
+        const transformedSessions = directData.map((session: any) => {
+          const transformedSession: WhatsAppSession = {
+            id: session.id,
+            sessionId: session.id,
+            name: session.name,
+            status: session.status === 'ready' ? 'connected' : session.status,
+            phoneNumber: session.phoneNumber,
+            lastActivity: session.createdAt || new Date().toISOString(),
+            messageCount: 0,
+            messagesSent: 0,
+            qrCode: session.qrCode,
+            isReady: session.status === 'ready'
+          }
+
+          // Save to shared store
+          setSession(transformedSession)
+          return transformedSession
+        })
         
         return NextResponse.json({
           success: true,
